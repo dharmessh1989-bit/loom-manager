@@ -1,0 +1,1270 @@
+<!DOCTYPE html>
+<html lang="gu">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>લૂમ બીમ મેનેજર | Loom Beam Manager</title>
+<style>
+  :root{
+    --ink:#1e2530;
+    --ink-soft:#4a5568;
+    --paper:#f6f3ec;
+    --paper-raised:#ffffff;
+    --line:#ddd6c7;
+    --indigo:#2c4a6e;
+    --indigo-deep:#1a3252;
+    --thread:#c16b2a;
+    --thread-soft:#e8a969;
+    --ok:#3a7d5c;
+    --ok-bg:#e5f2ec;
+    --warn:#b5482f;
+    --warn-bg:#faeae5;
+    --shadow: 0 1px 2px rgba(30,37,48,.06), 0 4px 12px rgba(30,37,48,.05);
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; background:var(--paper); color:var(--ink);
+    font-family: 'Segoe UI', 'Noto Sans Gujarati', system-ui, sans-serif;
+    background-image:
+      repeating-linear-gradient(90deg, rgba(44,74,110,.035) 0 1px, transparent 1px 26px);
+  }
+  header{
+    background: linear-gradient(135deg, var(--indigo-deep), var(--indigo));
+    color:#f4efe4; padding:22px 28px; position:relative; overflow:hidden;
+  }
+  header::after{
+    content:""; position:absolute; right:-40px; top:-40px; width:180px; height:180px;
+    border:14px solid rgba(244,239,228,.08); border-radius:50%;
+  }
+  header::before{
+    content:""; position:absolute; right:40px; bottom:-60px; width:120px; height:120px;
+    border:10px solid rgba(244,239,228,.06); border-radius:50%;
+  }
+  header h1{
+    margin:0; font-size:22px; letter-spacing:.3px; font-weight:700; position:relative;
+  }
+  header p{
+    margin:4px 0 0; opacity:.8; font-size:13px; position:relative;
+  }
+  nav{
+    display:flex; gap:2px; background:var(--indigo-deep); padding:0 20px; overflow-x:auto;
+  }
+  nav button{
+    background:transparent; border:none; color:#cbd8e8; padding:13px 16px; cursor:pointer;
+    font-size:14px; font-weight:600; border-bottom:3px solid transparent; white-space:nowrap;
+    transition:.15s;
+  }
+  nav button:hover{ color:#fff; }
+  nav button.active{ color:#fff; border-bottom-color:var(--thread-soft); background:rgba(255,255,255,.05); }
+  main{ max-width:1180px; margin:0 auto; padding:22px 20px 60px; }
+  .view{ display:none; animation:fade .2s ease; }
+  .view.active{ display:block; }
+  @keyframes fade{ from{opacity:0; transform:translateY(4px);} to{opacity:1; transform:none;} }
+
+  .grid{ display:grid; gap:16px; }
+  .grid.cols-4{ grid-template-columns:repeat(4,1fr); }
+  .grid.cols-2{ grid-template-columns:1fr 1fr; }
+  @media(max-width:800px){ .grid.cols-4{grid-template-columns:repeat(2,1fr);} .grid.cols-2{grid-template-columns:1fr;} }
+
+  .stat{
+    background:var(--paper-raised); border:1px solid var(--line); border-radius:10px;
+    padding:16px 18px; box-shadow:var(--shadow); position:relative; overflow:hidden;
+  }
+  .stat::before{ content:""; position:absolute; left:0; top:0; bottom:0; width:4px; background:var(--thread); }
+  .stat b{ display:block; font-size:26px; color:var(--indigo-deep); }
+  .stat span{ font-size:12.5px; color:var(--ink-soft); }
+
+  .card{
+    background:var(--paper-raised); border:1px solid var(--line); border-radius:12px;
+    padding:20px; box-shadow:var(--shadow); margin-bottom:18px;
+  }
+  .card h2{ margin:0 0 14px; font-size:16px; color:var(--indigo-deep); display:flex; align-items:center; gap:8px;}
+  .card h2::before{ content:""; width:8px; height:8px; background:var(--thread); border-radius:50%; display:inline-block;}
+
+  label{ display:block; font-size:12.5px; color:var(--ink-soft); margin-bottom:4px; font-weight:600; }
+  input, select{
+    width:100%; padding:9px 10px; border:1px solid var(--line); border-radius:7px;
+    background:#fffdf9; font-size:14px; color:var(--ink); font-family:inherit;
+  }
+  input:focus, select:focus{ outline:none; border-color:var(--indigo); box-shadow:0 0 0 3px rgba(44,74,110,.12); }
+  .field{ margin-bottom:12px; }
+  .form-grid{ display:grid; grid-template-columns:repeat(3,1fr); gap:12px 14px; }
+  @media(max-width:760px){ .form-grid{grid-template-columns:1fr 1fr;} }
+  @media(max-width:480px){ .form-grid{grid-template-columns:1fr;} }
+
+  .btn{
+    background:var(--indigo); color:#fff; border:none; padding:10px 20px; border-radius:8px;
+    font-weight:700; font-size:14px; cursor:pointer; transition:.15s;
+  }
+  .btn:hover{ background:var(--indigo-deep); }
+  .btn.thread{ background:var(--thread); }
+  .btn.thread:hover{ background:#a5591f; }
+  .btn.ghost{ background:transparent; color:var(--indigo); border:1px solid var(--line); }
+  .btn.danger{ background:transparent; color:var(--warn); border:1px solid var(--warn); padding:6px 10px; font-size:12.5px; }
+  .btn.small{ padding:6px 12px; font-size:12.5px; }
+
+  table{ width:100%; border-collapse:collapse; font-size:13.5px; }
+  th{ text-align:left; background:#efe9db; color:var(--ink-soft); font-size:11.5px;
+      text-transform:uppercase; letter-spacing:.4px; padding:9px 10px; white-space:nowrap; }
+  td{ padding:9px 10px; border-bottom:1px solid var(--line); text-align:left; vertical-align:middle; }
+  th.num, td.num{ text-align:right; }
+  .machine-block{ border:1px solid var(--line); border-radius:10px; margin-bottom:16px; overflow:hidden; }
+  .machine-block-head{
+    background:#eef2f6; padding:10px 14px; display:flex; align-items:center; justify-content:space-between;
+    flex-wrap:wrap; gap:8px; border-bottom:1px solid var(--line);
+  }
+  .machine-block-head .mno{ font-size:15px; font-weight:800; color:var(--indigo-deep); }
+  .machine-block-head .msub{ font-size:12px; color:var(--ink-soft); }
+  tr:hover td{ background:#faf8f2; }
+  .tag{ padding:3px 9px; border-radius:20px; font-size:11.5px; font-weight:700; display:inline-block; }
+  .tag.ok{ background:var(--ok-bg); color:var(--ok); }
+  .tag.warn{ background:var(--warn-bg); color:var(--warn); }
+  .muted{ color:var(--ink-soft); font-size:12.5px; }
+  .empty{ text-align:center; padding:36px 10px; color:var(--ink-soft); }
+  .empty svg{ opacity:.35; margin-bottom:8px; }
+  .bar-wrap{ background:#eee7d8; border-radius:5px; height:7px; width:100%; overflow:hidden; margin-top:4px;}
+  .bar{ height:100%; background:var(--ok); }
+  .bar.low{ background:var(--warn); }
+  .table-wrap{ overflow-x:auto; }
+  .row-actions{ display:flex; gap:6px; }
+  select.machine-picker{ font-weight:700; }
+  .toast{
+    position:fixed; bottom:20px; left:50%; transform:translateX(-50%) translateY(20px);
+    background:var(--indigo-deep); color:#fff; padding:11px 22px; border-radius:30px;
+    font-size:13.5px; font-weight:600; box-shadow:0 6px 20px rgba(0,0,0,.2); opacity:0;
+    pointer-events:none; transition:.25s; z-index:50;
+  }
+  .toast.show{ opacity:1; transform:translateX(-50%) translateY(0); }
+  .hint{ font-size:12px; color:var(--ink-soft); margin-top:2px; }
+  .search-bar{ display:flex; gap:10px; margin-bottom:14px; flex-wrap:wrap; }
+  .search-bar input, .search-bar select{ max-width:220px; }
+  footer{ text-align:center; padding:20px; color:var(--ink-soft); font-size:12px; }
+
+  .active-beams-box{
+    border:1px solid var(--line); border-radius:9px; overflow:hidden; margin-top:4px;
+  }
+  .active-beams-box table{ font-size:13px; }
+  .active-beams-box .empty{ padding:14px; }
+
+  .modal-overlay{
+    position:fixed; inset:0; background:rgba(20,26,34,.55); z-index:100;
+    display:flex; align-items:center; justify-content:center; padding:16px;
+  }
+  .modal-box{
+    background:var(--paper-raised); border-radius:12px; padding:22px; width:100%; max-width:560px;
+    max-height:88vh; overflow-y:auto; box-shadow:0 20px 50px rgba(0,0,0,.3);
+  }
+  .modal-box h3{ margin:0 0 14px; color:var(--indigo-deep); font-size:17px; }
+  .modal-actions{ display:flex; justify-content:flex-end; gap:10px; margin-top:16px; }
+  .btn.edit{ background:transparent; color:var(--indigo); border:1px solid var(--indigo); padding:6px 10px; font-size:12.5px; }
+
+  #loadingOverlay{
+    position:fixed; inset:0; background:var(--paper); z-index:200;
+    display:flex; flex-direction:column; align-items:center; justify-content:center; gap:10px;
+  }
+  .spinner{
+    width:34px; height:34px; border:4px solid var(--line); border-top-color:var(--indigo);
+    border-radius:50%; animation:spin .8s linear infinite;
+  }
+  @keyframes spin{ to{ transform:rotate(360deg); } }
+  #loadingOverlay p{ color:var(--ink-soft); font-size:13.5px; }
+  .sync-badge{
+    display:inline-flex; align-items:center; gap:6px; font-size:11.5px; color:#cbd8e8;
+    position:absolute; right:20px; top:20px;
+  }
+  .sync-dot{ width:7px; height:7px; border-radius:50%; background:#7ee0a8; box-shadow:0 0 0 3px rgba(126,224,168,.2); }
+  .sync-dot.busy{ background:#e8c26a; }
+  @media(max-width:640px){ .sync-badge{ position:static; margin-top:6px; justify-content:flex-start; } }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>🧵 લૂમ બીમ મેનેજર</h1>
+  <p>Machine · Beam · Out Cloth · Stock ટ્રેકિંગ સિસ્ટમ</p>
+  <span class="sync-badge" id="syncBadge"><span class="sync-dot" id="syncDot"></span><span id="syncText">સિંક થયેલ</span></span>
+</header>
+
+<div id="loadingOverlay">
+  <div class="spinner"></div>
+  <p>ડેટા લોડ થઈ રહ્યો છે...</p>
+</div>
+
+<nav>
+  <button data-view="dashboard" class="active">ડેશબોર્ડ</button>
+  <button data-view="beamEntry">બીમ એન્ટ્રી</button>
+  <button data-view="machines">મશીન લિસ્ટ</button>
+  <button data-view="outEntry">આઉટ કાપડ એન્ટ્રી</button>
+  <button data-view="stock">સ્ટોક / માલ મોકલ્યો</button>
+  <button data-view="history">હિસ્ટ્રી</button>
+</nav>
+
+<main>
+
+  <!-- DASHBOARD -->
+  <section id="dashboard" class="view active">
+    <div class="card" id="importCard">
+      <h2>જૂની ફાઈલમાંથી ડેટા ઇમ્પોર્ટ કરો</h2>
+      <p class="hint" style="margin-top:-6px;">જૂની ફાઈલમાં "ડેટા એક્સપોર્ટ કરો" બટનથી મળેલી <b>loom-data-export.json</b> ફાઈલ અહીં પસંદ કરો — બધા બીમ અને આઉટ એન્ટ્રી અહીં ઉમેરાઈ જશે (પહેલેથી હોય તે ડુપ્લિકેટ નહીં થાય).</p>
+      <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+        <input type="file" id="importFile" accept="application/json">
+        <button class="btn thread" onclick="importOldData()">ઇમ્પોર્ટ કરો</button>
+      </div>
+    </div>
+    <div class="grid cols-4" id="statGrid" style="margin-bottom:18px;"></div>
+    <div class="card">
+      <h2>ઓછા મીટર વાળા બીમ (Low Meter Alert)</h2>
+      <div class="table-wrap"><table id="lowMeterTable"></table></div>
+    </div>
+    <div class="card">
+      <h2>મશીન પ્રમાણે ચાલુ બીમ</h2>
+      <div class="table-wrap"><table id="dashMachineTable"></table></div>
+    </div>
+  </section>
+
+  <!-- BEAM ENTRY -->
+  <section id="beamEntry" class="view">
+    <div class="card">
+      <h2>નવો બીમ ઉમેરો</h2>
+      <form id="beamForm" class="form-grid">
+        <div class="field">
+          <label>From (પાર્ટીનું નામ)</label>
+          <input type="text" id="f_from" placeholder="દા.ત. Shree Textiles" required>
+        </div>
+        <div class="field">
+          <label>Machine No.</label>
+          <input type="text" id="f_machine" placeholder="દા.ત. M-01" required>
+        </div>
+        <div class="field">
+          <label>Beam No.</label>
+          <input type="text" id="f_beamno" placeholder="દા.ત. B-101" required>
+        </div>
+        <div class="field">
+          <label>તાર (Taar / Count)</label>
+          <input type="text" id="f_taar" placeholder="દા.ત. 40x40" required>
+        </div>
+        <div class="field">
+          <label>તાકા / MRT (કુલ મીટર)</label>
+          <input type="number" id="f_mts" min="0" step="0.01" placeholder="દા.ત. 3500" required>
+        </div>
+        <div class="field">
+          <label>તારીખ</label>
+          <input type="date" id="f_date" required>
+        </div>
+        <div class="field">
+          <label>ક્વોલિટી (Quality)</label>
+          <input type="text" id="f_quality" placeholder="દા.ત. Cotton Poplin">
+        </div>
+        <div class="field">
+          <label>PIC (પિક)</label>
+          <input type="text" id="f_pic" placeholder="દા.ત. 56">
+        </div>
+        <div class="field" style="grid-column:1/-1;">
+          <label>નોંધ (Note) — વૈકલ્પિક</label>
+          <input type="text" id="f_note" placeholder="કોઈ વધારાની નોંધ...">
+        </div>
+      </form>
+      <button class="btn thread" onclick="submitBeam()">+ બીમ ઉમેરો</button>
+      <p class="hint">નોંધ: જો આ Machine No. પર પહેલેથી ચાલુ બીમ હશે, તો નવો બીમ ઉમેરાયા પછી નવો બીમ "ચાલુ" ગણાશે અને જૂનો બીમ ઇતિહાસમાં રહેશે.</p>
+    </div>
+
+    <div class="card">
+      <h2>તાજેતરના બીમ</h2>
+      <div class="table-wrap"><table id="recentBeamsTable"></table></div>
+    </div>
+  </section>
+
+  <!-- MACHINES -->
+  <section id="machines" class="view">
+    <div class="card">
+      <h2>તમામ મશીન — દરેક મશીનના બધા બીમ</h2>
+      <p class="hint" style="margin-top:-6px;">દરેક મશીન નીચે તેના પર લાગેલા બધા બીમ (ચાલુ + પૂરા થયેલા) ની વિગત — તાર, કુલ મીટર, બાકી મીટર સહિત.</p>
+      <div id="machinesList"></div>
+    </div>
+  </section>
+
+  <!-- OUT ENTRY -->
+  <section id="outEntry" class="view">
+    <div class="card">
+      <h2>આઉટ કાપડ એન્ટ્રી</h2>
+      <div class="form-grid">
+        <div class="field">
+          <label>Machine No. પસંદ કરો</label>
+          <select id="o_machine" class="machine-picker" onchange="onMachinePick()"></select>
+        </div>
+        <div class="field">
+          <label>આઉટ મીટર (Out Mts)</label>
+          <input type="number" id="o_mts" min="0" step="0.01" placeholder="દા.ત. 120">
+        </div>
+        <div class="field">
+          <label>તાકા નંબર (Taka No.)</label>
+          <input type="text" id="o_taka" placeholder="દા.ત. T-45">
+        </div>
+        <div class="field">
+          <label>તારીખ</label>
+          <input type="date" id="o_date">
+        </div>
+        <div class="field" style="grid-column:1/-1;">
+          <label>નોંધ — વૈકલ્પિક</label>
+          <input type="text" id="o_note" placeholder="કોઈ નોંધ...">
+        </div>
+      </div>
+      <div class="field">
+        <label>આ મશીન પરના ચાલુ બીમ (દરેકમાંથી એટલા જ મીટર ઓછા થશે)</label>
+        <div class="active-beams-box"><table id="o_activeBeams"></table></div>
+      </div>
+      <button class="btn thread" onclick="submitOut()" style="margin-top:12px;">+ આઉટ કાપડ નોંધો</button>
+      <p class="hint" id="outHint"></p>
+    </div>
+
+    <div class="card">
+      <h2>તાજેતરની આઉટ એન્ટ્રી</h2>
+      <div class="table-wrap"><table id="recentOutTable"></table></div>
+    </div>
+  </section>
+
+  <!-- STOCK / DISPATCH -->
+  <section id="stock" class="view">
+    <div class="card">
+      <h2>ક્વોલિટી પ્રમાણે સ્ટોક શોધો</h2>
+      <p class="hint" style="margin-top:-6px;">દા.ત. <b>Mysore Crep Papaping C/P D.No-1</b> લખો — તમારી પાસે બનેલું અને હજુ ન મોકલેલું કાપડ કેટલું છે તે દેખાશે.</p>
+      <div class="search-bar">
+        <input type="text" id="s_search" placeholder="ક્વોલિટી શોધો..." oninput="renderStockTable()" style="max-width:340px;">
+      </div>
+      <div class="table-wrap"><table id="stockTable"></table></div>
+    </div>
+
+    <div class="card">
+      <h2>માલ મોકલ્યો (ડિસ્પેચ / વેચાણ) એન્ટ્રી</h2>
+      <p class="hint" style="margin-top:-6px;">અહીં જે મીટર લખશો તે તે ક્વોલિટીના સ્ટોકમાંથી ઓછા થઈ જશે.</p>
+      <div class="form-grid">
+        <div class="field">
+          <label>ક્વોલિટી (Quality)</label>
+          <input type="text" id="d_quality" list="qualityOptions" placeholder="દા.ત. Mysore Crep Papaping C/P D.No-1">
+          <datalist id="qualityOptions"></datalist>
+        </div>
+        <div class="field">
+          <label>તાકા નંબર (Taka No.)</label>
+          <input type="text" id="d_taka" placeholder="દા.ત. T-45">
+        </div>
+        <div class="field">
+          <label>મોકલેલા મીટર (Mts)</label>
+          <input type="number" id="d_mts" min="0" step="0.01" placeholder="દા.ત. 120">
+        </div>
+        <div class="field">
+          <label>તારીખ</label>
+          <input type="date" id="d_date">
+        </div>
+        <div class="field" style="grid-column:1/-1;">
+          <label>નોંધ — વૈકલ્પિક</label>
+          <input type="text" id="d_note" placeholder="દા.ત. પાર્ટીનું નામ...">
+        </div>
+      </div>
+      <p class="hint" id="d_stockHint"></p>
+      <button class="btn thread" onclick="submitDispatch()">+ માલ મોકલ્યો નોંધો</button>
+    </div>
+
+    <div class="card">
+      <h2>તાજેતરની ડિસ્પેચ એન્ટ્રી</h2>
+      <div class="table-wrap"><table id="recentDispatchTable"></table></div>
+    </div>
+  </section>
+
+  <!-- HISTORY -->
+  <section id="history" class="view">
+    <div class="card">
+      <h2>સંપૂર્ણ હિસ્ટ્રી</h2>
+      <div class="search-bar">
+        <select id="h_type">
+          <option value="all">બધું</option>
+          <option value="beam">બીમ એન્ટ્રી</option>
+          <option value="out">આઉટ કાપડ એન્ટ્રી</option>
+          <option value="dispatch">ડિસ્પેચ / વેચાણ</option>
+        </select>
+        <select id="h_machine">
+          <option value="">-- બધા મશીન --</option>
+        </select>
+        <input type="text" id="h_search" placeholder="Beam No. / Name / ક્વોલિટી શોધો..." oninput="renderHistory()">
+      </div>
+      <div class="table-wrap"><table id="historyTable"></table></div>
+    </div>
+  </section>
+
+</main>
+
+<footer>Loom Beam Manager · ડેટા GitHub repo માં સેવ થાય છે — https://dharmessh1989-bit.github.io/loom-manager/ પરથી કોઈ પણ PC કે મોબાઇલ ખોલો, એક જ ડેટા દેખાશે</footer>
+<div class="toast" id="toast"></div>
+
+<div class="modal-overlay" id="editModal" style="display:none;">
+  <div class="modal-box">
+    <h3 id="editModalTitle">એડિટ કરો</h3>
+    <div id="editModalBody"></div>
+    <div class="modal-actions">
+      <button class="btn ghost" onclick="closeEditModal()">રદ કરો</button>
+      <button class="btn thread" id="editModalSave">સેવ કરો</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ---------- Storage: GitHub repo used as the shared cloud database ----------
+// ⚠️ EDIT THESE 3 LINES BEFORE UPLOADING, then re-upload this file to your repo.
+const GITHUB_OWNER = 'dharmessh1989-bit';
+const GITHUB_REPO  = 'loom-manager';
+const GITHUB_TOKEN = 'PASTE_YOUR_TOKEN_HERE'; // Fine-grained token, Contents: Read and write, scoped to this repo only
+const GITHUB_PATH  = 'data.json';
+
+let beams = [];
+let outs = [];
+let dispatches = [];
+let dataReady = false;
+let lastSavedJSON = '';
+let githubFileSha = null;
+
+function setSyncStatus(state){
+  const dot = document.getElementById('syncDot');
+  const txt = document.getElementById('syncText');
+  if(!dot) return;
+  if(state==='busy'){ dot.classList.add('busy'); txt.textContent = 'સેવ થઈ રહ્યું છે...'; }
+  else if(state==='error'){ dot.classList.add('busy'); txt.textContent = 'સેવ નિષ્ફળ - ટોકન/ઈન્ટરનેટ ચેક કરો'; }
+  else { dot.classList.remove('busy'); txt.textContent = 'સિંક થયેલ'; }
+}
+
+function snapshotJSON(){
+  return JSON.stringify({beams, outs, dispatches}, null, 2);
+}
+
+function utf8ToBase64(str){ return btoa(unescape(encodeURIComponent(str))); }
+function base64ToUtf8(str){ return decodeURIComponent(escape(atob(str.replace(/\n/g,'')))); }
+
+function githubHeaders(){
+  return {
+    'Authorization': `token ${GITHUB_TOKEN}`,
+    'Accept': 'application/vnd.github+json'
+  };
+}
+
+// Returns file text content, or null if the file doesn't exist yet.
+async function githubGetFile(){
+  const url = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${GITHUB_PATH}`;
+  const res = await fetch(url, {headers: githubHeaders()});
+  if(res.status===404){ githubFileSha = null; return null; }
+  if(!res.ok) throw new Error('GitHub read failed: '+res.status);
+  const json = await res.json();
+  githubFileSha = json.sha;
+  return base64ToUtf8(json.content);
+}
+
+async function githubPutFile(content){
+  const url = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${GITHUB_PATH}`;
+  const body = {
+    message: 'Update loom data - ' + new Date().toISOString(),
+    content: utf8ToBase64(content)
+  };
+  if(githubFileSha) body.sha = githubFileSha;
+  const res = await fetch(url, {
+    method: 'PUT',
+    headers: {...githubHeaders(), 'Content-Type':'application/json'},
+    body: JSON.stringify(body)
+  });
+  if(!res.ok) throw new Error('GitHub write failed: '+res.status);
+  const json = await res.json();
+  githubFileSha = json.content.sha;
+}
+
+async function loadAllData(){
+  try{
+    const text = await githubGetFile();
+    const parsed = text ? JSON.parse(text) : {};
+    beams = parsed.beams || [];
+    outs = parsed.outs || [];
+    dispatches = parsed.dispatches || [];
+  }catch(e){
+    beams = []; outs = []; dispatches = [];
+    toast('⚠ GitHub સાથે કનેક્ટ ન થયું — ટોકન/repo નામ ચેક કરો');
+  }
+  // Migrate older out-entries (single beamId/beamNo) to the new multi-beam schema
+  let migrated = false;
+  outs.forEach(o=>{
+    if(!o.beams && o.beamId){
+      o.beams = [{beamId:o.beamId, beamNo:o.beamNo}];
+      migrated = true;
+    }
+    if(o.quality===undefined){
+      let q = '';
+      (o.beams||[]).some(ref=>{
+        const b = beams.find(x=>x.id===ref.beamId);
+        if(b && b.quality){ q = b.quality; return true; }
+        return false;
+      });
+      o.quality = q;
+      migrated = true;
+    }
+  });
+  lastSavedJSON = snapshotJSON();
+  if(migrated) await saveAll();
+}
+
+async function saveAll(){
+  setSyncStatus('busy');
+  try{
+    const json = snapshotJSON();
+    await githubPutFile(json);
+    lastSavedJSON = json;
+    setSyncStatus('ok');
+  }catch(e){
+    setSyncStatus('error');
+    toast('⚠ સેવ કરવામાં તકલીફ — ટોકન/ઈન્ટરનેટ ચેક કરો');
+  }
+}
+
+// Poll periodically + on tab focus so changes made from another PC/mobile show up here too.
+async function pollForRemoteChanges(){
+  if(!dataReady) return;
+  try{
+    const text = await githubGetFile();
+    if(text && text !== lastSavedJSON){
+      const parsed = JSON.parse(text);
+      beams = parsed.beams || [];
+      outs = parsed.outs || [];
+      dispatches = parsed.dispatches || [];
+      lastSavedJSON = text;
+      refreshAll();
+    }
+  }catch(e){ /* ignore poll errors */ }
+}
+setInterval(pollForRemoteChanges, 15000);
+window.addEventListener('focus', pollForRemoteChanges);
+document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) pollForRemoteChanges(); });
+
+function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
+function todayStr(){ return new Date().toISOString().slice(0,10); }
+function fmt(n){ return Number(n).toLocaleString('en-IN', {maximumFractionDigits:2}); }
+function toast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'), 2200);
+}
+
+// ---------- Navigation ----------
+document.querySelectorAll('nav button').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    document.querySelectorAll('nav button').forEach(b=>b.classList.remove('active'));
+    document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById(btn.dataset.view).classList.add('active');
+    refreshAll();
+  });
+});
+
+// ---------- Core logic ----------
+// Active beam for a machine = latest-created beam (by creation order) for that machine with status 'active'
+function machineList(){
+  const set = new Set(beams.map(b=>b.machine));
+  return Array.from(set).sort();
+}
+
+function beamsForMachine(machineNo){
+  return beams.filter(b=>b.machine===machineNo).sort((a,b)=>a.seq-b.seq);
+}
+
+function activeBeamForMachine(machineNo){
+  const list = beamsForMachine(machineNo).filter(b=>b.status==='active');
+  if(list.length===0) return null;
+  return list[list.length-1]; // most recently added active beam
+}
+
+// A machine can run more than one beam at once (e.g. double-beam looms).
+// This returns ALL currently active beams for a machine.
+function activeBeamsForMachine(machineNo){
+  return beamsForMachine(machineNo).filter(b=>b.status==='active');
+}
+
+async function addBeam(data){
+  const seq = beams.length ? Math.max(...beams.map(b=>b.seq||0))+1 : 1;
+  const beam = {
+    id: uid(), seq,
+    from: data.from, machine: data.machine, beamNo: data.beamNo,
+    taar: data.taar, quality: data.quality||'', pic: data.pic||'',
+    totalMts: parseFloat(data.mts), remainingMts: parseFloat(data.mts),
+    date: data.date, note: data.note||'', status:'active'
+  };
+  beams.push(beam);
+  await saveAll();
+  return beam;
+}
+
+// Out cloth entry: the meters entered are deducted from EVERY beam
+// currently active on that machine (each beam loses the full entered amount,
+// since parallel beams on one loom all feed the same woven length).
+// The produced meters are also added to that quality's finished-cloth stock.
+async function addOut(data){
+  const active = activeBeamsForMachine(data.machine);
+  if(active.length===0) return {ok:false, msg:'આ મશીન પર કોઈ ચાલુ બીમ નથી.'};
+  const mts = parseFloat(data.mts);
+  if(!mts || mts<=0) return {ok:false, msg:'માન્ય મીટર દાખલ કરો.'};
+  const qualities = Array.from(new Set(active.map(b=>b.quality).filter(Boolean)));
+  const entry = {
+    id: uid(), machine: data.machine,
+    beams: active.map(b=>({beamId:b.id, beamNo:b.beamNo})),
+    mts, taka: data.taka||'', date: data.date, note: data.note||'',
+    quality: qualities[0] || ''
+  };
+  outs.push(entry);
+  active.forEach(b=>{
+    b.remainingMts = Math.round((b.remainingMts - mts)*100)/100;
+    if(b.remainingMts <= 0){ b.status = 'finished'; b.remainingMts = Math.max(b.remainingMts,0); }
+  });
+  await saveAll();
+  return {ok:true, beams:active};
+}
+
+async function deleteBeam(id){
+  if(!confirm('આ બીમ એન્ટ્રી ડિલીટ કરવી છે? સંબંધિત આઉટ એન્ટ્રી પણ અસર પામશે.')) return;
+  beams = beams.filter(b=>b.id!==id);
+  outs = outs.filter(o=>!(o.beams||[]).some(x=>x.beamId===id));
+  await saveAll();
+  toast('બીમ ડિલીટ થયો');
+  refreshAll();
+}
+
+async function deleteOut(id){
+  if(!confirm('આ આઉટ એન્ટ્રી ડિલીટ કરવી છે? બીમના મીટર પાછા ઉમેરાશે.')) return;
+  const entry = outs.find(o=>o.id===id);
+  if(entry){
+    (entry.beams||[]).forEach(ref=>{
+      const beam = beams.find(b=>b.id===ref.beamId);
+      if(beam){
+        beam.remainingMts = Math.round((beam.remainingMts + entry.mts)*100)/100;
+        if(beam.remainingMts>0) beam.status='active';
+      }
+    });
+  }
+  outs = outs.filter(o=>o.id!==id);
+  await saveAll();
+  toast('એન્ટ્રી ડિલીટ થઈ');
+  refreshAll();
+}
+
+// ---------- Stock (finished cloth, quality-wise) ----------
+// Produced = sum of out-cloth entries for that quality.
+// Dispatched = sum of dispatch (sale/out-going) entries for that quality.
+// Stock = Produced - Dispatched.
+function qualityList(){
+  const set = new Set();
+  outs.forEach(o=>{ if(o.quality) set.add(o.quality); });
+  dispatches.forEach(d=>{ if(d.quality) set.add(d.quality); });
+  beams.forEach(b=>{ if(b.quality) set.add(b.quality); });
+  return Array.from(set).sort((a,b)=>a.localeCompare(b));
+}
+function producedForQuality(q){
+  return outs.filter(o=>o.quality===q).reduce((s,o)=>s+o.mts,0);
+}
+function dispatchedForQuality(q){
+  return dispatches.filter(d=>d.quality===q).reduce((s,d)=>s+d.mts,0);
+}
+function stockForQuality(q){
+  return Math.round((producedForQuality(q) - dispatchedForQuality(q))*100)/100;
+}
+
+async function addDispatch(data){
+  const quality = (data.quality||'').trim();
+  const mts = parseFloat(data.mts);
+  if(!quality) return {ok:false, msg:'ક્વોલિટી લખો.'};
+  if(!mts || mts<=0) return {ok:false, msg:'માન્ય મીટર દાખલ કરો.'};
+  const available = stockForQuality(quality);
+  if(mts > available) return {ok:false, msg:`⚠ સ્ટોકમાં ફક્ત ${fmt(available)} મીટર જ છે, ${fmt(mts)} નહીં.`};
+  const entry = {
+    id: uid(), quality, mts, taka: data.taka||'', date: data.date, note: data.note||''
+  };
+  dispatches.push(entry);
+  await saveAll();
+  return {ok:true};
+}
+
+async function deleteDispatch(id){
+  if(!confirm('આ ડિસ્પેચ એન્ટ્રી ડિલીટ કરવી છે? સ્ટોકમાં મીટર પાછા ઉમેરાશે.')) return;
+  dispatches = dispatches.filter(d=>d.id!==id);
+  await saveAll();
+  toast('ડિસ્પેચ એન્ટ્રી ડિલીટ થઈ');
+  refreshAll();
+}
+
+// ---------- Edit modal ----------
+function openModal(title, bodyHtml, onSave){
+  document.getElementById('editModalTitle').textContent = title;
+  document.getElementById('editModalBody').innerHTML = bodyHtml;
+  document.getElementById('editModal').style.display = 'flex';
+  const saveBtn = document.getElementById('editModalSave');
+  saveBtn.onclick = onSave;
+}
+function closeEditModal(){
+  document.getElementById('editModal').style.display = 'none';
+}
+
+function editBeam(id){
+  const b = beams.find(x=>x.id===id);
+  if(!b) return;
+  const body = `
+    <div class="form-grid" style="grid-template-columns:1fr 1fr;">
+      <div class="field"><label>From</label><input id="em_from" value="${escAttr(b.from)}"></div>
+      <div class="field"><label>Machine No.</label><input id="em_machine" value="${escAttr(b.machine)}"></div>
+      <div class="field"><label>Beam No.</label><input id="em_beamno" value="${escAttr(b.beamNo)}"></div>
+      <div class="field"><label>તાર</label><input id="em_taar" value="${escAttr(b.taar)}"></div>
+      <div class="field"><label>ક્વોલિટી</label><input id="em_quality" value="${escAttr(b.quality)}"></div>
+      <div class="field"><label>PIC</label><input id="em_pic" value="${escAttr(b.pic)}"></div>
+      <div class="field"><label>કુલ મીટર</label><input id="em_mts" type="number" step="0.01" value="${b.totalMts}"></div>
+      <div class="field"><label>તારીખ</label><input id="em_date" type="date" value="${b.date}"></div>
+      <div class="field"><label>સ્ટેટસ</label>
+        <select id="em_status">
+          <option value="active" ${b.status==='active'?'selected':''}>ચાલુ</option>
+          <option value="finished" ${b.status==='finished'?'selected':''}>પૂરો</option>
+        </select>
+      </div>
+      <div class="field" style="grid-column:1/-1;"><label>નોંધ</label><input id="em_note" value="${escAttr(b.note)}"></div>
+    </div>`;
+  openModal(`બીમ એડિટ કરો — ${esc(b.beamNo)}`, body, ()=>{
+    const newTotal = parseFloat(document.getElementById('em_mts').value)||0;
+    const delta = newTotal - b.totalMts;
+    b.from = document.getElementById('em_from').value.trim();
+    b.machine = document.getElementById('em_machine').value.trim();
+    b.beamNo = document.getElementById('em_beamno').value.trim();
+    b.taar = document.getElementById('em_taar').value.trim();
+    b.quality = document.getElementById('em_quality').value.trim();
+    b.pic = document.getElementById('em_pic').value.trim();
+    b.totalMts = newTotal;
+    b.remainingMts = Math.max(0, Math.round((b.remainingMts + delta)*100)/100);
+    b.date = document.getElementById('em_date').value || b.date;
+    b.note = document.getElementById('em_note').value.trim();
+    const manualStatus = document.getElementById('em_status').value;
+    b.status = b.remainingMts<=0 ? 'finished' : manualStatus;
+    saveAll().then(()=>{
+      toast('✅ બીમ અપડેટ થયો');
+      closeEditModal();
+      refreshAll();
+    });
+  });
+}
+
+function editOut(id){
+  const o = outs.find(x=>x.id===id);
+  if(!o) return;
+  const beamNames = (o.beams||[]).map(x=>x.beamNo).join(', ') || '—';
+  const body = `
+    <p class="muted">Machine: <b>${esc(o.machine)}</b> · અસર થયેલા બીમ: ${esc(beamNames)}</p>
+    <div class="form-grid" style="grid-template-columns:1fr 1fr;">
+      <div class="field"><label>આઉટ મીટર</label><input id="em_out_mts" type="number" step="0.01" value="${o.mts}"></div>
+      <div class="field"><label>તાકા નંબર</label><input id="em_out_taka" value="${escAttr(o.taka)}"></div>
+      <div class="field"><label>ક્વોલિટી (સ્ટોક માટે)</label><input id="em_out_quality" value="${escAttr(o.quality)}"></div>
+      <div class="field"><label>તારીખ</label><input id="em_out_date" type="date" value="${o.date}"></div>
+      <div class="field" style="grid-column:1/-1;"><label>નોંધ</label><input id="em_out_note" value="${escAttr(o.note)}"></div>
+    </div>
+    <p class="hint">મીટર બદલવાથી ઉપરના તમામ બીમના બાકી મીટરમાં ફેરફાર થશે, અને ક્વોલિટી સ્ટોકમાં પણ ફેરફાર થશે.</p>`;
+  openModal(`આઉટ એન્ટ્રી એડિટ કરો`, body, ()=>{
+    const newMts = parseFloat(document.getElementById('em_out_mts').value)||0;
+    const oldMts = o.mts;
+    const diff = newMts - oldMts; // positive => deduct more from beams
+    (o.beams||[]).forEach(ref=>{
+      const beam = beams.find(x=>x.id===ref.beamId);
+      if(!beam) return;
+      beam.remainingMts = Math.round((beam.remainingMts - diff)*100)/100;
+      if(beam.remainingMts <= 0){ beam.status='finished'; beam.remainingMts = Math.max(beam.remainingMts,0); }
+      else { beam.status = 'active'; }
+    });
+    o.mts = newMts;
+    o.taka = document.getElementById('em_out_taka').value.trim();
+    o.quality = document.getElementById('em_out_quality').value.trim();
+    o.date = document.getElementById('em_out_date').value || o.date;
+    o.note = document.getElementById('em_out_note').value.trim();
+    saveAll().then(()=>{
+      toast('✅ આઉટ એન્ટ્રી અપડેટ થઈ');
+      closeEditModal();
+      refreshAll();
+    });
+  });
+}
+
+function editDispatch(id){
+  const d = dispatches.find(x=>x.id===id);
+  if(!d) return;
+  const body = `
+    <div class="form-grid" style="grid-template-columns:1fr 1fr;">
+      <div class="field"><label>ક્વોલિટી</label><input id="em_d_quality" value="${escAttr(d.quality)}"></div>
+      <div class="field"><label>તાકા નંબર</label><input id="em_d_taka" value="${escAttr(d.taka)}"></div>
+      <div class="field"><label>મોકલેલા મીટર</label><input id="em_d_mts" type="number" step="0.01" value="${d.mts}"></div>
+      <div class="field"><label>તારીખ</label><input id="em_d_date" type="date" value="${d.date}"></div>
+      <div class="field" style="grid-column:1/-1;"><label>નોંધ</label><input id="em_d_note" value="${escAttr(d.note)}"></div>
+    </div>`;
+  openModal(`ડિસ્પેચ એન્ટ્રી એડિટ કરો`, body, ()=>{
+    d.quality = document.getElementById('em_d_quality').value.trim();
+    d.taka = document.getElementById('em_d_taka').value.trim();
+    d.mts = parseFloat(document.getElementById('em_d_mts').value)||0;
+    d.date = document.getElementById('em_d_date').value || d.date;
+    d.note = document.getElementById('em_d_note').value.trim();
+    saveAll().then(()=>{
+      toast('✅ ડિસ્પેચ એન્ટ્રી અપડેટ થઈ');
+      closeEditModal();
+      refreshAll();
+    });
+  });
+}
+
+// ---------- Beam Entry view ----------
+document.getElementById('f_date').value = todayStr();
+
+async function submitBeam(){
+  const from = document.getElementById('f_from').value.trim();
+  const machine = document.getElementById('f_machine').value.trim();
+  const beamNo = document.getElementById('f_beamno').value.trim();
+  const taar = document.getElementById('f_taar').value.trim();
+  const mts = document.getElementById('f_mts').value;
+  const date = document.getElementById('f_date').value || todayStr();
+  const quality = document.getElementById('f_quality').value.trim();
+  const pic = document.getElementById('f_pic').value.trim();
+  const note = document.getElementById('f_note').value.trim();
+
+  if(!from || !machine || !beamNo || !taar || !mts){
+    toast('બધી જરૂરી વિગત ભરો'); return;
+  }
+  await addBeam({from, machine, beamNo, taar, mts, date, note, quality, pic});
+  toast(`✅ બીમ ${beamNo} મશીન ${machine} પર ઉમેરાયો`);
+  document.getElementById('beamForm').reset();
+  document.getElementById('f_date').value = todayStr();
+  refreshAll();
+}
+
+function renderRecentBeams(){
+  const tbl = document.getElementById('recentBeamsTable');
+  const list = [...beams].sort((a,b)=>b.seq-a.seq).slice(0,15);
+  if(list.length===0){ tbl.innerHTML = emptyRow(9,'હજુ કોઈ બીમ ઉમેરાયો નથી'); return; }
+  tbl.innerHTML = `<tr><th>તારીખ</th><th>Machine</th><th>Beam No.</th><th>તાર</th><th>ક્વોલિટી</th><th>PIC</th><th class="num">બાકી / કુલ મીટર</th><th>સ્ટેટસ</th><th></th></tr>` +
+    list.map(b=>`<tr>
+      <td>${b.date}</td><td><b>${esc(b.machine)}</b></td><td>${esc(b.beamNo)}</td><td>${esc(b.taar)}</td>
+      <td class="muted">${esc(b.quality)||'—'}</td>
+      <td class="muted">${esc(b.pic)||'—'}</td>
+      <td class="num">${fmt(b.remainingMts)} / ${fmt(b.totalMts)}</td>
+      <td>${statusTag(b.status)}</td>
+      <td class="row-actions">
+        <button class="btn edit" onclick="editBeam('${b.id}')">એડિટ</button>
+        <button class="btn danger" onclick="deleteBeam('${b.id}')">ડિલીટ</button>
+      </td>
+    </tr>`).join('');
+}
+
+function statusTag(s){
+  return s==='active' ? `<span class="tag ok">ચાલુ</span>` : `<span class="tag warn">પૂરો</span>`;
+}
+function emptyRow(colspan, msg){
+  return `<tr><td colspan="${colspan}" class="empty">${msg}</td></tr>`;
+}
+function esc(s){ return (s||'').toString().replace(/[<>&]/g, c=>({'<':'&lt;','>':'&gt;','&':'&amp;'}[c])); }
+function escAttr(s){ return esc(s).replace(/"/g,'&quot;'); }
+
+// ---------- Machines view ----------
+function renderMachinesTable(){
+  const wrap = document.getElementById('machinesList');
+  const list = machineList();
+  if(list.length===0){ wrap.innerHTML = `<div class="empty">હજુ કોઈ મશીન નોંધાયું નથી</div>`; return; }
+
+  wrap.innerHTML = list.map(m=>{
+    const all = beamsForMachine(m).slice().sort((a,b)=>b.seq-a.seq); // newest first
+    const activeCount = all.filter(b=>b.status==='active').length;
+    const finishedCount = all.filter(b=>b.status==='finished').length;
+
+    const rows = all.map(b=>{
+      const pct = b.totalMts>0 ? Math.max(0,Math.min(100,(b.remainingMts/b.totalMts)*100)) : 0;
+      const low = pct < 15 && b.status==='active';
+      return `<tr>
+        <td>${esc(b.beamNo)}</td>
+        <td>${esc(b.taar)}</td>
+        <td class="muted">${esc(b.quality)||'—'}</td>
+        <td class="muted">${esc(b.pic)||'—'}</td>
+        <td class="num">${fmt(b.totalMts)}</td>
+        <td class="num">${fmt(b.remainingMts)}</td>
+        <td style="min-width:110px;"><div class="bar-wrap"><div class="bar ${low?'low':''}" style="width:${pct}%"></div></div></td>
+        <td>${statusTag(b.status)}</td>
+        <td>${esc(b.from)}</td>
+        <td>${b.date}</td>
+        <td class="row-actions">
+          <button class="btn edit" onclick="editBeam('${b.id}')">એડિટ</button>
+          <button class="btn danger" onclick="deleteBeam('${b.id}')">ડિલીટ</button>
+        </td>
+      </tr>`;
+    }).join('');
+
+    return `<div class="machine-block">
+      <div class="machine-block-head">
+        <span class="mno">Machine No. ${esc(m)}</span>
+        <span class="msub">કુલ બીમ: ${all.length} &nbsp;·&nbsp; ચાલુ: ${activeCount} &nbsp;·&nbsp; પૂરા: ${finishedCount}</span>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <tr><th>Beam No.</th><th>તાર</th><th>ક્વોલિટી</th><th>PIC</th><th class="num">કુલ મીટર</th><th class="num">બાકી મીટર</th><th>પ્રગતિ</th><th>સ્ટેટસ</th><th>From</th><th>તારીખ</th><th></th></tr>
+          ${rows}
+        </table>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// ---------- Out Entry view ----------
+document.getElementById('o_date').value = todayStr();
+
+function populateMachinePicker(){
+  const sel = document.getElementById('o_machine');
+  const cur = sel.value;
+  const list = machineList();
+  sel.innerHTML = `<option value="">-- પસંદ કરો --</option>` + list.map(m=>`<option value="${esc(m)}">${esc(m)}</option>`).join('');
+  if(list.includes(cur)) sel.value = cur;
+  onMachinePick();
+}
+
+function onMachinePick(){
+  const m = document.getElementById('o_machine').value;
+  const box = document.getElementById('o_activeBeams');
+  const hint = document.getElementById('outHint');
+  if(!m){
+    box.innerHTML = `<tr><td class="empty">Machine No. પસંદ કરો</td></tr>`;
+    hint.textContent = '';
+    return;
+  }
+  const active = activeBeamsForMachine(m);
+  if(active.length===0){
+    box.innerHTML = `<tr><td class="empty">⚠ આ મશીન પર કોઈ ચાલુ બીમ નથી</td></tr>`;
+    hint.textContent = '⚠ આ મશીન પર પહેલા બીમ ઉમેરો.';
+    return;
+  }
+  box.innerHTML = `<tr><th>Beam No.</th><th>તાર</th><th>ક્વોલિટી</th><th class="num">બાકી મીટર</th></tr>` +
+    active.map(b=>`<tr><td>${esc(b.beamNo)}</td><td>${esc(b.taar)}</td><td>${esc(b.quality)||'—'}</td><td class="num">${fmt(b.remainingMts)}</td></tr>`).join('');
+  hint.textContent = active.length>1
+    ? `આ મશીન પર ${active.length} બીમ ચાલુ છે — તમે લખેલા મીટર દરેક બીમમાંથી (દરેકમાંથી પૂરેપૂરા) ઓછા થશે.`
+    : `આ એન્ટ્રીથી બીમ ${active[0].beamNo} માંથી મીટર ઓછા થશે.`;
+}
+
+async function submitOut(){
+  const machine = document.getElementById('o_machine').value;
+  const mts = document.getElementById('o_mts').value;
+  const taka = document.getElementById('o_taka').value.trim();
+  const date = document.getElementById('o_date').value || todayStr();
+  const note = document.getElementById('o_note').value.trim();
+  if(!machine){ toast('Machine No. પસંદ કરો'); return; }
+  const active = activeBeamsForMachine(machine);
+  if(active.length===0){ toast('આ મશીન પર ચાલુ બીમ નથી'); return; }
+  if(!mts || parseFloat(mts)<=0){ toast('માન્ય મીટર દાખલ કરો'); return; }
+  const res = await addOut({machine, mts, taka, date, note});
+  if(!res.ok){ toast(res.msg); return; }
+  toast(`✅ ${fmt(mts)} મીટર નોંધાયા — ${res.beams.length} બીમમાંથી ઓછા થયા — સ્ટોકમાં ઉમેરાયા`);
+  document.getElementById('o_mts').value='';
+  document.getElementById('o_taka').value='';
+  document.getElementById('o_note').value='';
+  document.getElementById('o_date').value = todayStr();
+  refreshAll();
+}
+
+// ---------- Stock / Dispatch view ----------
+document.getElementById('d_date').value = todayStr();
+
+function populateQualityDatalist(){
+  const dl = document.getElementById('qualityOptions');
+  dl.innerHTML = qualityList().map(q=>`<option value="${escAttr(q)}"></option>`).join('');
+}
+
+function updateDispatchStockHint(){
+  const q = document.getElementById('d_quality').value.trim();
+  const hint = document.getElementById('d_stockHint');
+  if(!q){ hint.textContent = ''; return; }
+  const avail = stockForQuality(q);
+  hint.textContent = `હાલ સ્ટોકમાં "${q}" ના ${fmt(avail)} મીટર ઉપલબ્ધ છે.`;
+}
+document.getElementById('d_quality').addEventListener('input', updateDispatchStockHint);
+
+async function submitDispatch(){
+  const quality = document.getElementById('d_quality').value.trim();
+  const mts = document.getElementById('d_mts').value;
+  const taka = document.getElementById('d_taka').value.trim();
+  const date = document.getElementById('d_date').value || todayStr();
+  const note = document.getElementById('d_note').value.trim();
+  if(!quality){ toast('ક્વોલિટી લખો'); return; }
+  if(!mts || parseFloat(mts)<=0){ toast('માન્ય મીટર દાખલ કરો'); return; }
+  const res = await addDispatch({quality, mts, taka, date, note});
+  if(!res.ok){ toast(res.msg); return; }
+  toast(`✅ ${fmt(mts)} મીટર "${quality}" સ્ટોકમાંથી મોકલાયા`);
+  document.getElementById('d_quality').value='';
+  document.getElementById('d_taka').value='';
+  document.getElementById('d_mts').value='';
+  document.getElementById('d_note').value='';
+  document.getElementById('d_date').value = todayStr();
+  refreshAll();
+}
+
+function renderStockTable(){
+  const q = (document.getElementById('s_search')?.value||'').trim().toLowerCase();
+  const tbl = document.getElementById('stockTable');
+  let list = qualityList();
+  if(q) list = list.filter(x=>x.toLowerCase().includes(q));
+  if(list.length===0){
+    tbl.innerHTML = emptyRow(4, qualityList().length===0 ? 'હજુ કોઈ ક્વોલિટીનું ઉત્પાદન નોંધાયું નથી' : 'આ ક્વોલિટી મળી નથી');
+    return;
+  }
+  tbl.innerHTML = `<tr><th>ક્વોલિટી</th><th class="num">કુલ બનેલું</th><th class="num">કુલ મોકલેલું</th><th class="num">હાલ સ્ટોક</th></tr>` +
+    list.map(qn=>{
+      const produced = producedForQuality(qn);
+      const dispatched = dispatchedForQuality(qn);
+      const stock = stockForQuality(qn);
+      const low = produced>0 && stock/produced < 0.15;
+      return `<tr>
+        <td><b>${esc(qn)}</b></td>
+        <td class="num">${fmt(produced)}</td>
+        <td class="num">${fmt(dispatched)}</td>
+        <td class="num"><span class="tag ${low?'warn':'ok'}">${fmt(stock)}</span></td>
+      </tr>`;
+    }).join('');
+}
+
+function renderRecentDispatch(){
+  const tbl = document.getElementById('recentDispatchTable');
+  const list = [...dispatches].sort((a,b)=>b.id.localeCompare(a.id)).slice(0,15);
+  if(list.length===0){ tbl.innerHTML = emptyRow(6,'હજુ કોઈ ડિસ્પેચ એન્ટ્રી નથી'); return; }
+  tbl.innerHTML = `<tr><th>તારીખ</th><th>ક્વોલિટી</th><th>તાકા નં.</th><th class="num">મીટર</th><th>નોંધ</th><th></th></tr>` +
+    list.map(d=>`<tr>
+      <td>${d.date}</td><td><b>${esc(d.quality)}</b></td><td>${esc(d.taka)||'—'}</td>
+      <td class="num">${fmt(d.mts)}</td><td class="muted">${esc(d.note)||'—'}</td>
+      <td class="row-actions">
+        <button class="btn edit" onclick="editDispatch('${d.id}')">એડિટ</button>
+        <button class="btn danger" onclick="deleteDispatch('${d.id}')">ડિલીટ</button>
+      </td>
+    </tr>`).join('');
+}
+
+function renderRecentOut(){
+  const tbl = document.getElementById('recentOutTable');
+  const list = [...outs].sort((a,b)=>b.id.localeCompare(a.id)).slice(0,15);
+  if(list.length===0){ tbl.innerHTML = emptyRow(8,'હજુ કોઈ આઉટ એન્ટ્રી નથી'); return; }
+  tbl.innerHTML = `<tr><th>તારીખ</th><th>Machine</th><th>તાકા નં.</th><th>અસર થયેલા બીમ</th><th>ક્વોલિટી</th><th class="num">આઉટ મીટર</th><th>નોંધ</th><th></th></tr>` +
+    list.map(o=>`<tr>
+      <td>${o.date}</td><td><b>${esc(o.machine)}</b></td><td>${esc(o.taka)||'—'}</td><td>${esc((o.beams||[]).map(x=>x.beamNo).join(', ')||'—')}</td>
+      <td class="muted">${esc(o.quality)||'—'}</td>
+      <td class="num">${fmt(o.mts)}</td><td class="muted">${esc(o.note)||'—'}</td>
+      <td class="row-actions">
+        <button class="btn edit" onclick="editOut('${o.id}')">એડિટ</button>
+        <button class="btn danger" onclick="deleteOut('${o.id}')">ડિલીટ</button>
+      </td>
+    </tr>`).join('');
+}
+
+// ---------- Dashboard ----------
+function renderDashboard(){
+  const machinesCount = machineList().length;
+  const activeBeams = beams.filter(b=>b.status==='active').length;
+  const finishedBeams = beams.filter(b=>b.status==='finished').length;
+  const totalOutMts = outs.reduce((s,o)=>s+o.mts,0);
+
+  document.getElementById('statGrid').innerHTML = `
+    <div class="stat"><b>${machinesCount}</b><span>કુલ મશીન</span></div>
+    <div class="stat"><b>${activeBeams}</b><span>ચાલુ બીમ</span></div>
+    <div class="stat"><b>${finishedBeams}</b><span>પૂરા થયેલા બીમ</span></div>
+    <div class="stat"><b>${fmt(totalOutMts)}</b><span>કુલ આઉટ કાપડ (મીટર)</span></div>
+  `;
+
+  const low = beams.filter(b=>b.status==='active' && b.totalMts>0 && (b.remainingMts/b.totalMts)<0.15)
+                    .sort((a,b)=>a.remainingMts-b.remainingMts);
+  const lowTbl = document.getElementById('lowMeterTable');
+  if(low.length===0){
+    lowTbl.innerHTML = emptyRow(4,'✅ કોઈ બીમ ઓછા મીટરમાં નથી');
+  } else {
+    lowTbl.innerHTML = `<tr><th>Machine</th><th>Beam No.</th><th class="num">બાકી મીટર</th><th class="num">કુલ મીટર</th></tr>` +
+      low.map(b=>`<tr><td><b>${esc(b.machine)}</b></td><td>${esc(b.beamNo)}</td><td class="num"><span class="tag warn">${fmt(b.remainingMts)}</span></td><td class="num">${fmt(b.totalMts)}</td></tr>`).join('');
+  }
+
+  const mTbl = document.getElementById('dashMachineTable');
+  const list = machineList();
+  if(list.length===0){
+    mTbl.innerHTML = emptyRow(4,'હજુ કોઈ મશીન નથી');
+  } else {
+    const lines = [];
+    list.forEach(m=>{
+      const active = activeBeamsForMachine(m);
+      if(active.length===0){
+        lines.push(`<tr><td><b>${esc(m)}</b></td><td colspan="2" class="muted">ચાલુ બીમ નથી</td><td><span class="tag warn">ખાલી</span></td></tr>`);
+      } else {
+        active.forEach((a,i)=>{
+          lines.push(`<tr><td>${i===0?`<b>${esc(m)}</b>`:''}</td><td>${esc(a.beamNo)}</td><td class="num">${fmt(a.remainingMts)}</td><td><span class="tag ok">ચાલુ</span></td></tr>`);
+        });
+      }
+    });
+    mTbl.innerHTML = `<tr><th>Machine</th><th>ચાલુ Beam</th><th class="num">બાકી મીટર</th><th>સ્ટેટસ</th></tr>` + lines.join('');
+  }
+}
+
+// ---------- History ----------
+function populateHistoryMachinePicker(){
+  const sel = document.getElementById('h_machine');
+  const cur = sel.value;
+  const list = machineList();
+  sel.innerHTML = `<option value="">-- બધા મશીન --</option>` + list.map(m=>`<option value="${escAttr(m)}">${esc(m)}</option>`).join('');
+  if(list.includes(cur)) sel.value = cur;
+}
+
+function renderHistory(){
+  const type = document.getElementById('h_type').value;
+  const machineFilter = document.getElementById('h_machine').value;
+  const q = document.getElementById('h_search').value.trim().toLowerCase();
+  let rows = [];
+
+  if(type==='all' || type==='beam'){
+    beams.forEach(b=>rows.push({kind:'beam', date:b.date, obj:b}));
+  }
+  if(type==='all' || type==='out'){
+    outs.forEach(o=>rows.push({kind:'out', date:o.date, obj:o}));
+  }
+  if(type==='all' || type==='dispatch'){
+    dispatches.forEach(d=>rows.push({kind:'dispatch', date:d.date, obj:d}));
+  }
+  rows.sort((a,b)=> (b.date||'').localeCompare(a.date||''));
+
+  if(machineFilter){
+    rows = rows.filter(r=>r.obj.machine===machineFilter);
+  }
+
+  if(q){
+    rows = rows.filter(r=>{
+      if(r.kind==='beam'){
+        return [r.obj.machine, r.obj.beamNo, r.obj.from, r.obj.taar, r.obj.quality, r.obj.pic].join(' ').toLowerCase().includes(q);
+      } else if(r.kind==='out'){
+        const beamNames = (r.obj.beams||[]).map(x=>x.beamNo).join(' ');
+        return [r.obj.machine, beamNames, r.obj.note, r.obj.taka, r.obj.quality].join(' ').toLowerCase().includes(q);
+      } else {
+        return [r.obj.quality, r.obj.note, r.obj.taka].join(' ').toLowerCase().includes(q);
+      }
+    });
+  }
+
+  const tbl = document.getElementById('historyTable');
+  if(rows.length===0){ tbl.innerHTML = emptyRow(7,'કોઈ રેકોર્ડ મળ્યો નથી'); return; }
+
+  tbl.innerHTML = `<tr><th>પ્રકાર</th><th>તારીખ</th><th>Machine</th><th>Beam No.</th><th>વિગત</th><th class="num">મીટર</th><th></th></tr>` +
+    rows.map(r=>{
+      if(r.kind==='beam'){
+        const b = r.obj;
+        return `<tr>
+          <td><span class="tag ${b.status==='active'?'ok':'warn'}">બીમ</span></td>
+          <td>${b.date}</td><td><b>${esc(b.machine)}</b></td><td>${esc(b.beamNo)}</td>
+          <td class="muted">From: ${esc(b.from)} · તાર: ${esc(b.taar)}${b.quality?' · ક્વોલિટી: '+esc(b.quality):''}${b.pic?' · PIC: '+esc(b.pic):''}</td>
+          <td class="num">${fmt(b.remainingMts)}/${fmt(b.totalMts)}</td>
+          <td class="row-actions">
+            <button class="btn edit" onclick="editBeam('${b.id}')">એડિટ</button>
+            <button class="btn danger" onclick="deleteBeam('${b.id}')">ડિલીટ</button>
+          </td>
+        </tr>`;
+      } else if(r.kind==='out'){
+        const o = r.obj;
+        const beamNames = (o.beams||[]).map(x=>x.beamNo).join(', ')||'—';
+        return `<tr>
+          <td><span class="tag warn">આઉટ</span></td>
+          <td>${o.date}</td><td><b>${esc(o.machine)}</b></td><td>${esc(beamNames)}</td>
+          <td class="muted">${o.taka?('તાકા: '+esc(o.taka)+' · '):''}${o.quality?('ક્વોલિટી: '+esc(o.quality)+' · '):''}${esc(o.note)||'—'}</td>
+          <td class="num">${fmt(o.mts)}</td>
+          <td class="row-actions">
+            <button class="btn edit" onclick="editOut('${o.id}')">એડિટ</button>
+            <button class="btn danger" onclick="deleteOut('${o.id}')">ડિલીટ</button>
+          </td>
+        </tr>`;
+      } else {
+        const d = r.obj;
+        return `<tr>
+          <td><span class="tag ok">ડિસ્પેચ</span></td>
+          <td>${d.date}</td><td class="muted">—</td><td class="muted">—</td>
+          <td class="muted">ક્વોલિટી: ${esc(d.quality)}${d.taka?(' · તાકા: '+esc(d.taka)):''}${d.note?(' · '+esc(d.note)):''}</td>
+          <td class="num">${fmt(d.mts)}</td>
+          <td class="row-actions">
+            <button class="btn edit" onclick="editDispatch('${d.id}')">એડિટ</button>
+            <button class="btn danger" onclick="deleteDispatch('${d.id}')">ડિલીટ</button>
+          </td>
+        </tr>`;
+      }
+    }).join('');
+}
+document.getElementById('h_type').addEventListener('change', renderHistory);
+document.getElementById('h_machine').addEventListener('change', renderHistory);
+
+// ---------- Import from old (localStorage) file ----------
+async function importOldData(){
+  const fileInput = document.getElementById('importFile');
+  const file = fileInput.files && fileInput.files[0];
+  if(!file){ toast('પહેલા ફાઈલ પસંદ કરો'); return; }
+  let data;
+  try{
+    const text = await file.text();
+    data = JSON.parse(text);
+  }catch(e){
+    toast('⚠ ફાઈલ વાંચવામાં ભૂલ — સાચી loom-data-export.json ફાઈલ પસંદ કરો');
+    return;
+  }
+  const oldBeams = (data.beams || []).slice().sort((a,b)=>(a.seq||0)-(b.seq||0));
+  const oldOuts = data.outs || [];
+  let addedBeams = 0, addedOuts = 0;
+  let maxSeq = beams.length ? Math.max(...beams.map(b=>b.seq||0)) : 0;
+
+  oldBeams.forEach(b=>{
+    if(beams.some(x=>x.id===b.id)) return; // already imported / already present
+    maxSeq++;
+    beams.push({...b, seq:maxSeq});
+    addedBeams++;
+  });
+
+  oldOuts.forEach(o=>{
+    if(outs.some(x=>x.id===o.id)) return;
+    if(o.quality===undefined || o.quality===null){
+      let q = '';
+      (o.beams||[]).some(ref=>{
+        const bb = beams.find(x=>x.id===ref.beamId);
+        if(bb && bb.quality){ q = bb.quality; return true; }
+        return false;
+      });
+      o.quality = q;
+    }
+    outs.push(o);
+    addedOuts++;
+  });
+
+  if(addedBeams===0 && addedOuts===0){
+    toast('આ ડેટા પહેલેથી ઇમ્પોર્ટ થયેલો છે — કંઈ નવું ઉમેરાયું નથી');
+    return;
+  }
+
+  await saveAll();
+  toast(`✅ ${addedBeams} બીમ અને ${addedOuts} આઉટ એન્ટ્રી ઇમ્પોર્ટ થઈ`);
+  fileInput.value = '';
+  refreshAll();
+}
+
+// ---------- Refresh all ----------
+function refreshAll(){
+  renderDashboard();
+  renderRecentBeams();
+  renderMachinesTable();
+  populateMachinePicker();
+  renderRecentOut();
+  populateQualityDatalist();
+  renderStockTable();
+  renderRecentDispatch();
+  updateDispatchStockHint();
+  populateHistoryMachinePicker();
+  renderHistory();
+}
+
+// ---------- Bootstrap ----------
+(async function start(){
+  if(GITHUB_TOKEN === 'PASTE_YOUR_TOKEN_HERE'){
+    document.getElementById('loadingOverlay').innerHTML =
+      '<p style="max-width:320px; text-align:center; padding:0 16px;">⚠ આ ફાઈલમાં હજુ તમારો GitHub ટોકન નાખ્યો નથી.<br><br>ફાઈલના કોડમાં <b>GITHUB_TOKEN</b> વાળી લાઈનમાં તમારો ટોકન પેસ્ટ કરો, પછી ફરી repo માં અપલોડ કરી ખોલો.</p>';
+    return;
+  }
+  await loadAllData();
+  dataReady = true;
+  refreshAll();
+  document.getElementById('loadingOverlay').style.display = 'none';
+})();
+</script>
+</body>
+</html>
