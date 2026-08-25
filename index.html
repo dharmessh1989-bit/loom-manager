@@ -446,8 +446,8 @@ function githubHeaders(){
 
 // Returns file text content, or null if the file doesn't exist yet.
 async function githubGetFile(){
-  const url = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${GITHUB_PATH}`;
-  const res = await fetch(url, {headers: githubHeaders()});
+  const url = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${GITHUB_PATH}?_=${Date.now()}`;
+  const res = await fetch(url, {headers: githubHeaders(), cache: 'no-store'});
   if(res.status===404){ githubFileSha = null; return null; }
   if(!res.ok) throw new Error('GitHub read failed: '+res.status);
   const json = await res.json();
