@@ -326,6 +326,15 @@
   <!-- STOCK / DISPATCH -->
   <section id="stock" class="view">
     <div class="card">
+      <h2>તાકા નંબર થી હિસ્ટ્રી શોધો</h2>
+      <p class="hint" style="margin-top:-6px;">તાકા નંબર લખો — એ ક્યારે બની (Out કાપડ એન્ટ્રી) અને ક્યારે/કેટલી મોકલાઈ (ડિસ્પેચ) એ બધું અહીં દેખાશે.</p>
+      <div class="search-bar">
+        <input type="text" id="taka_search" placeholder="તાકા નંબર લખો... દા.ત. T-45" oninput="renderTakaHistory()" style="max-width:340px;">
+      </div>
+      <div id="takaHistoryResult"></div>
+    </div>
+
+    <div class="card">
       <h2>ક્વોલિટી પ્રમાણે સ્ટોક શોધો</h2>
       <p class="hint" style="margin-top:-6px;">દા.ત. <b>Mysore Crep Papaping C/P D.No-1</b> લખો — તમારી પાસે બનેલું અને હજુ ન મોકલેલું કાપડ કેટલું છે તે દેખાશે.</p>
       <div class="search-bar">
@@ -335,34 +344,44 @@
     </div>
 
     <div class="card">
-      <h2>માલ મોકલ્યો (ડિસ્પેચ / વેચાણ) એન્ટ્રી</h2>
-      <p class="hint" style="margin-top:-6px;">અહીં જે મીટર લખશો તે તે ક્વોલિટીના સ્ટોકમાંથી ઓછા થઈ જશે.</p>
+      <h2>માલ મોકલ્યો (ડિસ્પેચ / વેચાણ) — ચલણ સ્ટાઈલ એન્ટ્રી</h2>
+      <p class="hint" style="margin-top:-6px;">તાકા નંબર લખી <b>Enter</b> દબાવો — ક્વોલિટી અને મીટર આપોઆપ ભરાઈને નીચે લિસ્ટમાં ઉમેરાશે. બધા તાકા ઉમેર્યા પછી છેલ્લે એક જ વાર "બધા તાકા સેવ કરો" દબાવો.</p>
       <div class="form-grid">
         <div class="field">
-          <label>ક્વોલિટી (Quality)</label>
-          <input type="text" id="d_quality" list="qualityOptions" placeholder="દા.ત. Mysore Crep Papaping C/P D.No-1">
+          <label>તાકા નંબર (Taka No.)</label>
+          <input type="text" id="d_taka" placeholder="દા.ત. T-45, પછી Enter દબાવો">
+        </div>
+        <div class="field">
+          <label>ક્વોલિટી (જો આપોઆપ ના ભરાય તો જાતે લખો)</label>
+          <input type="text" id="d_quality" list="qualityOptions" placeholder="ક્વોલિટી">
           <datalist id="qualityOptions"></datalist>
         </div>
         <div class="field">
-          <label>તાકા નંબર (Taka No.)</label>
-          <input type="text" id="d_taka" placeholder="દા.ત. T-45">
+          <label>મીટર</label>
+          <input type="number" id="d_mts" min="0" step="0.01" placeholder="મીટર">
         </div>
-        <div class="field">
-          <label>મોકલેલા મીટર (Mts)</label>
-          <input type="number" id="d_mts" min="0" step="0.01" placeholder="દા.ત. 120">
-        </div>
-        <div class="field">
-          <label>તારીખ</label>
-          <input type="date" id="d_date">
-        </div>
-        <div class="field" style="grid-column:1/-1;">
-          <label>નોંધ — વૈકલ્પિક</label>
-          <input type="text" id="d_note" placeholder="દા.ત. પાર્ટીનું નામ...">
+        <div class="field" style="justify-content:flex-end;">
+          <button class="btn edit" onclick="addTakaToPending()">+ લિસ્ટમાં ઉમેરો</button>
         </div>
       </div>
       <p class="hint" id="d_stockHint"></p>
-      <button class="btn thread" onclick="submitDispatch()">+ માલ મોકલ્યો નોંધો</button>
+
+      <div class="table-wrap"><table id="pendingDispatchTable"></table></div>
+      <p class="hint" id="pendingDispatchTotal" style="font-weight:700;"></p>
+
+      <div class="form-grid" style="margin-top:10px;">
+        <div class="field">
+          <label>તારીખ (બધા તાકા માટે એક જ)</label>
+          <input type="date" id="d_date">
+        </div>
+        <div class="field" style="grid-column:span 2;">
+          <label>નોંધ — વૈકલ્પિક (બધા તાકા માટે એક જ)</label>
+          <input type="text" id="d_note" placeholder="દા.ત. પાર્ટીનું નામ...">
+        </div>
+      </div>
+      <button class="btn thread" id="pendingDispatchSaveBtn" onclick="saveAllPendingDispatch()">+ બધા તાકા સેવ કરો (0)</button>
     </div>
+    <p class="hint" style="text-align:center; margin-top:-10px;">શોર્ટકટ: <b>F1</b> = બીમ એન્ટ્રી &nbsp;·&nbsp; <b>F2</b> = આઉટ કાપડ એન્ટ્રી &nbsp;·&nbsp; <b>F3</b> = માલ મોકલ્યો (આ પેજ). દરેક ફોર્મમાં Enter દબાવવાથી પછીના બોક્સમાં કર્સર જાય છે.</p>
 
     <div class="card">
       <h2>તાજેતરની ડિસ્પેચ એન્ટ્રી</h2>
@@ -508,15 +527,55 @@ function toast(msg){
 }
 
 // ---------- Navigation ----------
+function switchView(viewName){
+  const btn = document.querySelector(`nav button[data-view="${viewName}"]`);
+  if(!btn) return;
+  document.querySelectorAll('nav button').forEach(b=>b.classList.remove('active'));
+  document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById(viewName).classList.add('active');
+  refreshAll();
+}
 document.querySelectorAll('nav button').forEach(btn=>{
-  btn.addEventListener('click', ()=>{
-    document.querySelectorAll('nav button').forEach(b=>b.classList.remove('active'));
-    document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
-    btn.classList.add('active');
-    document.getElementById(btn.dataset.view).classList.add('active');
-    refreshAll();
-  });
+  btn.addEventListener('click', ()=> switchView(btn.dataset.view));
 });
+
+// F1 = બીમ એન્ટ્રી, F2 = આઉટ કાપડ એન્ટ્રી, F3 = સ્ટોક/માલ મોકલ્યો (ડિસ્પેચ)
+document.addEventListener('keydown', (e)=>{
+  if(e.key==='F1'){
+    e.preventDefault();
+    switchView('beamEntry');
+    setTimeout(()=>{ const el=document.getElementById('f_from'); if(el) el.focus(); }, 0);
+  } else if(e.key==='F2'){
+    e.preventDefault();
+    switchView('outEntry');
+    setTimeout(()=>{ const el=document.getElementById('o_machine'); if(el) el.focus(); }, 0);
+  } else if(e.key==='F3'){
+    e.preventDefault();
+    switchView('stock');
+    setTimeout(()=>{ const el=document.getElementById('d_taka'); if(el) el.focus(); }, 0);
+  }
+});
+
+// Enter-to-move-next-field, and auto-submit + refocus first field after the last one.
+// ids: ordered list of input ids for the form. onSubmit: async function to call on last-field Enter.
+function attachEnterNav(ids, onSubmit){
+  ids.forEach((id, idx)=>{
+    const el = document.getElementById(id);
+    if(!el) return;
+    el.addEventListener('keydown', (e)=>{
+      if(e.key==='Enter'){
+        e.preventDefault();
+        if(idx < ids.length-1){
+          const next = document.getElementById(ids[idx+1]);
+          if(next) next.focus();
+        } else {
+          onSubmit();
+        }
+      }
+    });
+  });
+}
 
 // ---------- Core logic ----------
 // Active beam for a machine = latest-created beam (by creation order) for that machine with status 'active'
@@ -792,6 +851,7 @@ async function submitBeam(){
   document.getElementById('beamForm').reset();
   document.getElementById('f_date').value = todayStr();
   refreshAll();
+  document.getElementById('f_from').focus();
 }
 
 function renderRecentBeams(){
@@ -920,6 +980,7 @@ async function submitOut(){
   document.getElementById('o_note').value='';
   document.getElementById('o_date').value = todayStr();
   refreshAll();
+  document.getElementById('o_machine').focus();
 }
 
 // ---------- Stock / Dispatch view ----------
@@ -939,23 +1000,170 @@ function updateDispatchStockHint(){
 }
 document.getElementById('d_quality').addEventListener('input', updateDispatchStockHint);
 
-async function submitDispatch(){
-  const quality = document.getElementById('d_quality').value.trim();
-  const mts = document.getElementById('d_mts').value;
+// તાકા નંબર લખતાં જ (Tab/click બહાર જવાથી) એ તાકાની ક્વોલિટી અને મીટર બંને પ્રિવ્યૂ તરીકે ભરાય
+// (એ તાકા "આઉટ કાપડ એન્ટ્રી" માં જે નોંધાયેલી હતી એના પરથી).
+function lookupOutByTaka(taka){
+  const t = (taka||'').trim().toLowerCase();
+  if(!t) return null;
+  return outs.find(o => (o.taka||'').trim().toLowerCase() === t) || null;
+}
+document.getElementById('d_taka').addEventListener('blur', ()=>{
+  const taka = document.getElementById('d_taka').value;
+  const match = lookupOutByTaka(taka);
+  if(match){
+    document.getElementById('d_quality').value = match.quality || '';
+    document.getElementById('d_mts').value = match.mts;
+    updateDispatchStockHint();
+  }
+});
+
+// ---------- ચલણ સ્ટાઈલ: પહેલા બધા તાકા લિસ્ટમાં ઉમેરો, છેલ્લે એક જ વારમાં સેવ કરો ----------
+let pendingDispatch = []; // {taka, quality, mts} — હજુ સેવ નથી થયેલા
+
+function addTakaToPending(){
   const taka = document.getElementById('d_taka').value.trim();
+  if(!taka){ toast('તાકા નંબર લખો'); return; }
+  if(pendingDispatch.some(p=>p.taka.toLowerCase()===taka.toLowerCase())){
+    toast('⚠ આ તાકા પહેલેથી લિસ્ટમાં છે');
+    return;
+  }
+  const match = lookupOutByTaka(taka);
+  const quality = match ? (match.quality||'') : document.getElementById('d_quality').value.trim();
+  const mts = match ? match.mts : (parseFloat(document.getElementById('d_mts').value)||0);
+  if(!quality){
+    toast('⚠ ક્વોલિટી મળી નહીં — જાતે ક્વોલિટી લખીને ફરી "+ લિસ્ટમાં ઉમેરો" દબાવો');
+    document.getElementById('d_quality').focus();
+    return;
+  }
+  if(!mts || mts<=0){
+    toast('⚠ મીટર લખો');
+    document.getElementById('d_mts').focus();
+    return;
+  }
+  pendingDispatch.push({taka, quality, mts});
+  renderPendingDispatch();
+  document.getElementById('d_taka').value='';
+  document.getElementById('d_quality').value='';
+  document.getElementById('d_mts').value='';
+  document.getElementById('d_stockHint').textContent='';
+  document.getElementById('d_taka').focus();
+}
+
+function removeFromPending(idx){
+  pendingDispatch.splice(idx,1);
+  renderPendingDispatch();
+}
+
+function renderPendingDispatch(){
+  const tbl = document.getElementById('pendingDispatchTable');
+  const totalEl = document.getElementById('pendingDispatchTotal');
+  const saveBtn = document.getElementById('pendingDispatchSaveBtn');
+  if(pendingDispatch.length===0){
+    tbl.innerHTML = emptyRow(4, 'હજુ કોઈ તાકા ઉમેર્યા નથી — તાકા નંબર લખી Enter દબાવો');
+  } else {
+    tbl.innerHTML = `<tr><th>તાકા નં.</th><th>ક્વોલિટી</th><th class="num">મીટર</th><th></th></tr>` +
+      pendingDispatch.map((p,i)=>`<tr>
+        <td><b>${esc(p.taka)}</b></td>
+        <td>${esc(p.quality)}</td>
+        <td class="num">${fmt(p.mts)}</td>
+        <td class="row-actions"><button class="btn danger" onclick="removeFromPending(${i})">✕ કાઢો</button></td>
+      </tr>`).join('');
+  }
+  const total = pendingDispatch.reduce((s,p)=>s+p.mts,0);
+  totalEl.textContent = pendingDispatch.length ? `કુલ ${pendingDispatch.length} તાકા — ${fmt(total)} મીટર` : '';
+  saveBtn.textContent = `+ બધા તાકા સેવ કરો (${pendingDispatch.length})`;
+}
+
+// Enter દબાવવાથી લિસ્ટમાં ઉમેરાય (taka/quality/mts — ત્રણેય બોક્સમાંથી)
+['d_taka','d_quality','d_mts'].forEach(id=>{
+  document.getElementById(id).addEventListener('keydown', (e)=>{
+    if(e.key==='Enter'){ e.preventDefault(); addTakaToPending(); }
+  });
+});
+
+async function saveAllPendingDispatch(){
+  if(pendingDispatch.length===0){ toast('પહેલા તાકા ઉમેરો'); return; }
   const date = document.getElementById('d_date').value || todayStr();
   const note = document.getElementById('d_note').value.trim();
-  if(!quality){ toast('ક્વોલિટી લખો'); return; }
-  if(!mts || parseFloat(mts)<=0){ toast('માન્ય મીટર દાખલ કરો'); return; }
-  const res = await addDispatch({quality, mts, taka, date, note});
-  if(!res.ok){ toast(res.msg); return; }
-  toast(`✅ ${fmt(mts)} મીટર "${quality}" સ્ટોકમાંથી મોકલાયા`);
-  document.getElementById('d_quality').value='';
-  document.getElementById('d_taka').value='';
-  document.getElementById('d_mts').value='';
+
+  // ક્વોલિટી પ્રમાણે કુલ મીટર ભેગા કરી, સ્ટોક પૂરતો છે કે નહીં ચેક કરો
+  const byQuality = {};
+  pendingDispatch.forEach(p=>{ byQuality[p.quality] = (byQuality[p.quality]||0) + p.mts; });
+  for(const q in byQuality){
+    const avail = stockForQuality(q);
+    if(byQuality[q] > avail){
+      toast(`⚠ "${q}" સ્ટોકમાં ફક્ત ${fmt(avail)} મીટર છે, ${fmt(byQuality[q])} નહીં — લિસ્ટ ચેક કરો`);
+      return;
+    }
+  }
+
+  pendingDispatch.forEach(p=>{
+    dispatches.push({id: uid(), quality:p.quality, mts:p.mts, taka:p.taka, date, note});
+  });
+  await saveAll();
+  toast(`✅ ${pendingDispatch.length} તાકા સેવ થયા`);
+  pendingDispatch = [];
+  renderPendingDispatch();
   document.getElementById('d_note').value='';
-  document.getElementById('d_date').value = todayStr();
   refreshAll();
+  document.getElementById('d_taka').focus();
+}
+
+// તાકા નંબર થી પૂરી હિસ્ટ્રી (ઉત્પાદન + ડિસ્પેચ બંને) બતાવે છે
+function renderTakaHistory(){
+  const taka = document.getElementById('taka_search').value.trim();
+  const box = document.getElementById('takaHistoryResult');
+  if(!taka){ box.innerHTML=''; return; }
+  const t = taka.toLowerCase();
+  const outEntry = outs.find(o => (o.taka||'').trim().toLowerCase() === t) || null;
+  const dispatchEntries = dispatches.filter(d => (d.taka||'').trim().toLowerCase() === t)
+    .sort((a,b)=>(a.date||'').localeCompare(b.date||''));
+
+  if(!outEntry && dispatchEntries.length===0){
+    box.innerHTML = `<p class="hint">⚠ "${esc(taka)}" તાકા માટે કોઈ રેકોર્ડ મળ્યો નથી.</p>`;
+    return;
+  }
+
+  let html = '';
+
+  if(outEntry){
+    html += `<div class="table-wrap"><table>
+      <tr><th colspan="2">ઉત્પાદન (Out કાપડ એન્ટ્રી)</th></tr>
+      <tr><td>તારીખ</td><td><b>${outEntry.date}</b></td></tr>
+      <tr><td>Machine</td><td><b>${esc(outEntry.machine)}</b></td></tr>
+      <tr><td>ક્વોલિટી</td><td>${esc(outEntry.quality)||'—'}</td></tr>
+      <tr><td>બનેલા મીટર</td><td class="num">${fmt(outEntry.mts)}</td></tr>
+      ${outEntry.note?`<tr><td>નોંધ</td><td>${esc(outEntry.note)}</td></tr>`:''}
+    </table></div>`;
+  } else {
+    html += `<p class="hint">⚠ આ તાકા "આઉટ કાપડ એન્ટ્રી" માં નોંધાયેલી નથી.</p>`;
+  }
+
+  if(dispatchEntries.length){
+    html += `<div class="table-wrap"><table>
+      <tr><th>તારીખ</th><th>ક્વોલિટી</th><th class="num">મોકલેલા મીટર</th><th>નોંધ</th></tr>` +
+      dispatchEntries.map(d=>`<tr><td>${d.date}</td><td>${esc(d.quality)}</td><td class="num">${fmt(d.mts)}</td><td class="muted">${esc(d.note)||'—'}</td></tr>`).join('') +
+      `</table></div>`;
+  } else {
+    html += `<p class="hint">આ તાકા હજુ મોકલાયેલી નથી — સ્ટોકમાં છે.</p>`;
+  }
+
+  const producedMts = outEntry ? outEntry.mts : 0;
+  const dispatchedMts = dispatchEntries.reduce((s,d)=>s+d.mts,0);
+  const remaining = Math.round((producedMts - dispatchedMts)*100)/100;
+  let statusTag = '';
+  if(!outEntry){
+    statusTag = `<span class="tag warn">અજ્ઞાત</span>`;
+  } else if(remaining<=0){
+    statusTag = `<span class="tag warn">સંપૂર્ણ મોકલાયેલ</span>`;
+  } else if(dispatchedMts>0){
+    statusTag = `<span class="tag warn">આંશિક મોકલાયેલ — બાકી ${fmt(remaining)} મીટર</span>`;
+  } else {
+    statusTag = `<span class="tag ok">સ્ટોકમાં — ${fmt(remaining)} મીટર</span>`;
+  }
+  html = `<p style="margin:6px 0 12px;"><b>સ્ટેટસ:</b> ${statusTag}</p>` + html;
+
+  box.innerHTML = html;
 }
 
 function renderStockTable(){
@@ -1209,12 +1417,25 @@ function refreshAll(){
   populateQualityDatalist();
   renderStockTable();
   renderRecentDispatch();
+  renderPendingDispatch();
+  renderTakaHistory();
   updateDispatchStockHint();
   populateHistoryMachinePicker();
   renderHistory();
 }
 
 // ---------- Bootstrap ----------
+// ---------- Enter-key navigation for fast keyboard-only entry ----------
+attachEnterNav(
+  ['f_from','f_machine','f_beamno','f_taar','f_mts','f_date','f_quality','f_pic','f_note'],
+  submitBeam
+);
+attachEnterNav(
+  ['o_machine','o_mts','o_taka','o_date','o_note'],
+  submitOut
+);
+// (ડિસ્પેચ ફોર્મ માટે Enter handling d_taka/d_quality/d_mts પર અલગથી, ઉપર addTakaToPending() સાથે લાગેલું છે)
+
 (async function start(){
   await loadAllData();
   dataReady = true;
