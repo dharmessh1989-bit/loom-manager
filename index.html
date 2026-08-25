@@ -392,7 +392,7 @@
 
 </main>
 
-<footer>Loom Beam Manager · ડેટા GitHub repo માં સેવ થાય છે — https://dharmessh1989-bit.github.io/loom-manager/ પરથી કોઈ પણ PC કે મોબાઇલ ખોલો, એક જ ડેટા દેખાશે</footer>
+<footer>Loom Beam Manager · ડેટા Firebase cloud માં સેવ થાય છે — https://dharmessh1989-bit.github.io/loom-manager/ પરથી કોઈ પણ PC કે મોબાઇલ ખોલો, એક જ ડેટા દેખાશે</footer>
 <div class="toast" id="toast"></div>
 
 <div class="modal-overlay" id="editModal" style="display:none;">
@@ -407,81 +407,39 @@
 </div>
 
 <script>
-// ---------- Storage: GitHub repo used as the shared cloud database ----------
-// ⚠️ EDIT THESE 3 LINES BEFORE UPLOADING, then re-upload this file to your repo.
-const GITHUB_OWNER = 'dharmessh1989-bit';
-const GITHUB_REPO  = 'loom-manager';
-const GITHUB_TOKEN = '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'; // Fine-grained token, Contents: Read and write, scoped to this repo only
-const GITHUB_PATH  = 'data.json';
+// ---------- Storage: Firebase Realtime Database (shared across all devices) ----------
+// Uses the same Firebase project as your other app, but a separate data path
+// so the two apps' data never mix.
+const FIREBASE_URL = 'https://krushnnal-packing-default-rtdb.asia-southeast1.firebasedatabase.app/loom_manager_data.json';
 
 let beams = [];
 let outs = [];
 let dispatches = [];
 let dataReady = false;
 let lastSavedJSON = '';
-let githubFileSha = null;
 
 function setSyncStatus(state){
   const dot = document.getElementById('syncDot');
   const txt = document.getElementById('syncText');
   if(!dot) return;
   if(state==='busy'){ dot.classList.add('busy'); txt.textContent = 'સેવ થઈ રહ્યું છે...'; }
-  else if(state==='error'){ dot.classList.add('busy'); txt.textContent = 'સેવ નિષ્ફળ - ટોકન/ઈન્ટરનેટ ચેક કરો'; }
+  else if(state==='error'){ dot.classList.add('busy'); txt.textContent = 'સેવ નિષ્ફળ - ઈન્ટરનેટ ચેક કરો'; }
   else { dot.classList.remove('busy'); txt.textContent = 'સિંક થયેલ'; }
 }
 
 function snapshotJSON(){
-  return JSON.stringify({beams, outs, dispatches}, null, 2);
-}
-
-function utf8ToBase64(str){ return btoa(unescape(encodeURIComponent(str))); }
-function base64ToUtf8(str){ return decodeURIComponent(escape(atob(str.replace(/\n/g,'')))); }
-
-function githubHeaders(){
-  return {
-    'Authorization': `token ${GITHUB_TOKEN}`,
-    'Accept': 'application/vnd.github+json'
-  };
-}
-
-// Returns file text content, or null if the file doesn't exist yet.
-async function githubGetFile(){
-  const url = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${GITHUB_PATH}?_=${Date.now()}`;
-  const res = await fetch(url, {headers: githubHeaders(), cache: 'no-store'});
-  if(res.status===404){ githubFileSha = null; return null; }
-  if(!res.ok) throw new Error('GitHub read failed: '+res.status);
-  const json = await res.json();
-  githubFileSha = json.sha;
-  return base64ToUtf8(json.content);
-}
-
-async function githubPutFile(content){
-  const url = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${GITHUB_PATH}`;
-  const body = {
-    message: 'Update loom data - ' + new Date().toISOString(),
-    content: utf8ToBase64(content)
-  };
-  if(githubFileSha) body.sha = githubFileSha;
-  const res = await fetch(url, {
-    method: 'PUT',
-    headers: {...githubHeaders(), 'Content-Type':'application/json'},
-    body: JSON.stringify(body)
-  });
-  if(!res.ok) throw new Error('GitHub write failed: '+res.status);
-  const json = await res.json();
-  githubFileSha = json.content.sha;
+  return JSON.stringify({beams, outs, dispatches});
 }
 
 async function loadAllData(){
   try{
-    const text = await githubGetFile();
-    const parsed = text ? JSON.parse(text) : {};
+    const res = await fetch(FIREBASE_URL, {cache:'no-store'});
+    const parsed = (await res.json()) || {};
     beams = parsed.beams || [];
     outs = parsed.outs || [];
     dispatches = parsed.dispatches || [];
   }catch(e){
     beams = []; outs = []; dispatches = [];
-    toast('⚠ GitHub સાથે કનેક્ટ ન થયું — ટોકન/repo નામ ચેક કરો');
   }
   // Migrate older out-entries (single beamId/beamNo) to the new multi-beam schema
   let migrated = false;
@@ -509,12 +467,12 @@ async function saveAll(){
   setSyncStatus('busy');
   try{
     const json = snapshotJSON();
-    await githubPutFile(json);
+    await fetch(FIREBASE_URL, {method:'PUT', headers:{'Content-Type':'application/json'}, body: json});
     lastSavedJSON = json;
     setSyncStatus('ok');
   }catch(e){
     setSyncStatus('error');
-    toast('⚠ સેવ કરવામાં તકલીફ — ટોકન/ઈન્ટરનેટ ચેક કરો');
+    toast('⚠ સેવ કરવામાં તકલીફ — ઈન્ટરનેટ ચેક કરો');
   }
 }
 
@@ -522,18 +480,21 @@ async function saveAll(){
 async function pollForRemoteChanges(){
   if(!dataReady) return;
   try{
-    const text = await githubGetFile();
-    if(text && text !== lastSavedJSON){
-      const parsed = JSON.parse(text);
-      beams = parsed.beams || [];
-      outs = parsed.outs || [];
-      dispatches = parsed.dispatches || [];
-      lastSavedJSON = text;
-      refreshAll();
+    const res = await fetch(FIREBASE_URL, {cache:'no-store'});
+    const parsed = await res.json();
+    if(parsed){
+      const json = JSON.stringify(parsed);
+      if(json !== lastSavedJSON){
+        beams = parsed.beams || [];
+        outs = parsed.outs || [];
+        dispatches = parsed.dispatches || [];
+        lastSavedJSON = json;
+        refreshAll();
+      }
     }
   }catch(e){ /* ignore poll errors */ }
 }
-setInterval(pollForRemoteChanges, 15000);
+setInterval(pollForRemoteChanges, 8000);
 window.addEventListener('focus', pollForRemoteChanges);
 document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) pollForRemoteChanges(); });
 
@@ -1255,11 +1216,6 @@ function refreshAll(){
 
 // ---------- Bootstrap ----------
 (async function start(){
-  if(GITHUB_TOKEN === 'PASTE_YOUR_TOKEN_HERE'){
-    document.getElementById('loadingOverlay').innerHTML =
-      '<p style="max-width:320px; text-align:center; padding:0 16px;">⚠ આ ફાઈલમાં હજુ તમારો GitHub ટોકન નાખ્યો નથી.<br><br>ફાઈલના કોડમાં <b>GITHUB_TOKEN</b> વાળી લાઈનમાં તમારો ટોકન પેસ્ટ કરો, પછી ફરી repo માં અપલોડ કરી ખોલો.</p>';
-    return;
-  }
   await loadAllData();
   dataReady = true;
   refreshAll();
