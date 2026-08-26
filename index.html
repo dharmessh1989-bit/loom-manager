@@ -212,6 +212,22 @@
       </div>
     </div>
     <div class="grid cols-4" id="statGrid" style="margin-bottom:18px;"></div>
+
+    <div class="grid cols-2" style="gap:18px; margin-bottom:0;">
+      <div class="card">
+        <h2>મશીન નંબર થી શોધો</h2>
+        <p class="hint" style="margin-top:-6px;">મશીન નંબર લખો — એ મશીન પર હાલ કઈ ક્વોલિટી, કેટલા મીટર બાકી છે વગેરે વિગત મળશે.</p>
+        <input type="text" id="dash_machine_search" placeholder="મશીન નંબર... દા.ત. 3" oninput="renderMachineLookup()" style="max-width:260px;">
+        <div id="dashMachineResult" style="margin-top:10px;"></div>
+      </div>
+      <div class="card">
+        <h2>તાકા નંબર થી શોધો</h2>
+        <p class="hint" style="margin-top:-6px;">તાકા નંબર લખો — કઈ મશીન, ક્વોલિટી, મીટર અને સ્ટોકમાં છે કે મોકલાઈ ગઈ એ વિગત મળશે.</p>
+        <input type="text" id="dash_taka_search" placeholder="તાકા નંબર... દા.ત. T-45" oninput="renderTakaHistory()" style="max-width:260px;">
+        <div id="dashTakaResult" style="margin-top:10px;"></div>
+      </div>
+    </div>
+
     <div class="card">
       <h2>ઓછા મીટર વાળા બીમ (Low Meter Alert)</h2>
       <div class="table-wrap"><table id="lowMeterTable"></table></div>
@@ -520,6 +536,14 @@ document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) pollFor
 function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
 function todayStr(){ return new Date().toISOString().slice(0,10); }
 function fmt(n){ return Number(n).toLocaleString('en-IN', {maximumFractionDigits:2}); }
+// Display dates as DD-MM-YYYY (input fields still use ISO YYYY-MM-DD internally, browser requires that).
+function fmtDate(iso){
+  if(!iso) return '—';
+  const parts = String(iso).split('-');
+  if(parts.length!==3) return iso;
+  const [y,m,d] = parts;
+  return `${d}-${m}-${y}`;
+}
 function toast(msg){
   const t = document.getElementById('toast');
   t.textContent = msg; t.classList.add('show');
@@ -578,10 +602,23 @@ function attachEnterNav(ids, onSubmit){
 }
 
 // ---------- Core logic ----------
+// Natural sort: "2" < "10" (numeric-aware), and handles mixed text+number like "3A" too.
+function naturalCompare(a, b){
+  const ax = [], bx = [];
+  String(a).replace(/(\d+)|(\D+)/g, (_, num, str)=>{ ax.push([num ? parseInt(num,10) : Infinity, str || ""]); });
+  String(b).replace(/(\d+)|(\D+)/g, (_, num, str)=>{ bx.push([num ? parseInt(num,10) : Infinity, str || ""]); });
+  while(ax.length && bx.length){
+    const an = ax.shift(), bn = bx.shift();
+    const diff = (an[0]-bn[0]) || an[1].localeCompare(bn[1]);
+    if(diff) return diff;
+  }
+  return ax.length - bx.length;
+}
+
 // Active beam for a machine = latest-created beam (by creation order) for that machine with status 'active'
 function machineList(){
   const set = new Set(beams.map(b=>b.machine));
-  return Array.from(set).sort();
+  return Array.from(set).sort(naturalCompare);
 }
 
 function beamsForMachine(machineNo){
@@ -860,7 +897,7 @@ function renderRecentBeams(){
   if(list.length===0){ tbl.innerHTML = emptyRow(9,'હજુ કોઈ બીમ ઉમેરાયો નથી'); return; }
   tbl.innerHTML = `<tr><th>તારીખ</th><th>Machine</th><th>Beam No.</th><th>તાર</th><th>ક્વોલિટી</th><th>PIC</th><th class="num">બાકી / કુલ મીટર</th><th>સ્ટેટસ</th><th></th></tr>` +
     list.map(b=>`<tr>
-      <td>${b.date}</td><td><b>${esc(b.machine)}</b></td><td>${esc(b.beamNo)}</td><td>${esc(b.taar)}</td>
+      <td>${fmtDate(b.date)}</td><td><b>${esc(b.machine)}</b></td><td>${esc(b.beamNo)}</td><td>${esc(b.taar)}</td>
       <td class="muted">${esc(b.quality)||'—'}</td>
       <td class="muted">${esc(b.pic)||'—'}</td>
       <td class="num">${fmt(b.remainingMts)} / ${fmt(b.totalMts)}</td>
@@ -905,7 +942,7 @@ function renderMachinesTable(){
         <td style="min-width:110px;"><div class="bar-wrap"><div class="bar ${low?'low':''}" style="width:${pct}%"></div></div></td>
         <td>${statusTag(b.status)}</td>
         <td>${esc(b.from)}</td>
-        <td>${b.date}</td>
+        <td>${fmtDate(b.date)}</td>
         <td class="row-actions">
           <button class="btn edit" onclick="editBeam('${b.id}')">એડિટ</button>
           <button class="btn danger" onclick="deleteBeam('${b.id}')">ડિલીટ</button>
@@ -1110,18 +1147,14 @@ async function saveAllPendingDispatch(){
 }
 
 // તાકા નંબર થી પૂરી હિસ્ટ્રી (ઉત્પાદન + ડિસ્પેચ બંને) બતાવે છે
-function renderTakaHistory(){
-  const taka = document.getElementById('taka_search').value.trim();
-  const box = document.getElementById('takaHistoryResult');
-  if(!taka){ box.innerHTML=''; return; }
-  const t = taka.toLowerCase();
+function takaHistoryHTML(taka){
+  const t = taka.trim().toLowerCase();
   const outEntry = outs.find(o => (o.taka||'').trim().toLowerCase() === t) || null;
   const dispatchEntries = dispatches.filter(d => (d.taka||'').trim().toLowerCase() === t)
     .sort((a,b)=>(a.date||'').localeCompare(b.date||''));
 
   if(!outEntry && dispatchEntries.length===0){
-    box.innerHTML = `<p class="hint">⚠ "${esc(taka)}" તાકા માટે કોઈ રેકોર્ડ મળ્યો નથી.</p>`;
-    return;
+    return `<p class="hint">⚠ "${esc(taka)}" તાકા માટે કોઈ રેકોર્ડ મળ્યો નથી.</p>`;
   }
 
   let html = '';
@@ -1129,7 +1162,7 @@ function renderTakaHistory(){
   if(outEntry){
     html += `<div class="table-wrap"><table>
       <tr><th colspan="2">ઉત્પાદન (Out કાપડ એન્ટ્રી)</th></tr>
-      <tr><td>તારીખ</td><td><b>${outEntry.date}</b></td></tr>
+      <tr><td>તારીખ</td><td><b>${fmtDate(outEntry.date)}</b></td></tr>
       <tr><td>Machine</td><td><b>${esc(outEntry.machine)}</b></td></tr>
       <tr><td>ક્વોલિટી</td><td>${esc(outEntry.quality)||'—'}</td></tr>
       <tr><td>બનેલા મીટર</td><td class="num">${fmt(outEntry.mts)}</td></tr>
@@ -1142,7 +1175,7 @@ function renderTakaHistory(){
   if(dispatchEntries.length){
     html += `<div class="table-wrap"><table>
       <tr><th>તારીખ</th><th>ક્વોલિટી</th><th class="num">મોકલેલા મીટર</th><th>નોંધ</th></tr>` +
-      dispatchEntries.map(d=>`<tr><td>${d.date}</td><td>${esc(d.quality)}</td><td class="num">${fmt(d.mts)}</td><td class="muted">${esc(d.note)||'—'}</td></tr>`).join('') +
+      dispatchEntries.map(d=>`<tr><td>${fmtDate(d.date)}</td><td>${esc(d.quality)}</td><td class="num">${fmt(d.mts)}</td><td class="muted">${esc(d.note)||'—'}</td></tr>`).join('') +
       `</table></div>`;
   } else {
     html += `<p class="hint">આ તાકા હજુ મોકલાયેલી નથી — સ્ટોકમાં છે.</p>`;
@@ -1151,18 +1184,60 @@ function renderTakaHistory(){
   const producedMts = outEntry ? outEntry.mts : 0;
   const dispatchedMts = dispatchEntries.reduce((s,d)=>s+d.mts,0);
   const remaining = Math.round((producedMts - dispatchedMts)*100)/100;
+  const lastDispatchDate = dispatchEntries.length ? fmtDate(dispatchEntries[dispatchEntries.length-1].date) : '';
   let statusTag = '';
   if(!outEntry){
     statusTag = `<span class="tag warn">અજ્ઞાત</span>`;
   } else if(remaining<=0){
-    statusTag = `<span class="tag warn">સંપૂર્ણ મોકલાયેલ</span>`;
+    statusTag = `<span class="tag warn">સંપૂર્ણ મોકલાયેલ — ${lastDispatchDate} ના રોજ</span>`;
   } else if(dispatchedMts>0){
-    statusTag = `<span class="tag warn">આંશિક મોકલાયેલ — બાકી ${fmt(remaining)} મીટર</span>`;
+    statusTag = `<span class="tag warn">આંશિક મોકલાયેલ (છેલ્લે ${lastDispatchDate}) — બાકી ${fmt(remaining)} મીટર</span>`;
   } else {
     statusTag = `<span class="tag ok">સ્ટોકમાં — ${fmt(remaining)} મીટર</span>`;
   }
-  html = `<p style="margin:6px 0 12px;"><b>સ્ટેટસ:</b> ${statusTag}</p>` + html;
+  return `<p style="margin:6px 0 12px;"><b>સ્ટેટસ:</b> ${statusTag}</p>` + html;
+}
 
+// આ ફંક્શન Dashboard અને Stock — બંને ટેબના તાકા-શોધ બોક્સ માટે વપરાય છે
+function renderTakaHistory(){
+  [['dash_taka_search','dashTakaResult'], ['taka_search','takaHistoryResult']].forEach(([inputId, outputId])=>{
+    const inputEl = document.getElementById(inputId);
+    const box = document.getElementById(outputId);
+    if(!inputEl || !box) return;
+    const taka = inputEl.value.trim();
+    box.innerHTML = taka ? takaHistoryHTML(taka) : '';
+  });
+}
+
+// મશીન નંબર લખતાં એ મશીનની ચાલુ બીમ, ક્વોલિટી, બાકી મીટર વગેરે વિગત બતાવે છે
+function renderMachineLookup(){
+  const m = (document.getElementById('dash_machine_search')?.value||'').trim();
+  const box = document.getElementById('dashMachineResult');
+  if(!box) return;
+  if(!m){ box.innerHTML=''; return; }
+  const allBeamsForM = beamsForMachine(m);
+  if(allBeamsForM.length===0){
+    box.innerHTML = `<p class="hint">⚠ મશીન "${esc(m)}" માટે કોઈ રેકોર્ડ મળ્યો નથી.</p>`;
+    return;
+  }
+  const active = allBeamsForM.filter(b=>b.status==='active');
+  let html = '';
+  if(active.length){
+    html += `<div class="table-wrap"><table>
+      <tr><th>Beam No.</th><th>ક્વોલિટી</th><th>તાર</th><th class="num">બાકી / કુલ મીટર</th></tr>` +
+      active.map(b=>`<tr>
+        <td><b>${esc(b.beamNo)}</b></td>
+        <td>${esc(b.quality)||'—'}</td>
+        <td>${esc(b.taar)||'—'}</td>
+        <td class="num">${fmt(b.remainingMts)} / ${fmt(b.totalMts)}</td>
+      </tr>`).join('') +
+      `</table></div>`;
+  } else {
+    html += `<p class="hint">આ મશીન પર હાલ કોઈ ચાલુ બીમ નથી — નવી બીમ ઉમેરો (F1).</p>`;
+  }
+  const machineOuts = outs.filter(o=>o.machine===m);
+  const totalOut = machineOuts.reduce((s,o)=>s+o.mts,0);
+  html += `<p class="hint">આ મશીન પરથી અત્યાર સુધીમાં કુલ <b>${fmt(totalOut)}</b> મીટર કાપડ ઉતર્યું છે (${machineOuts.length} એન્ટ્રી).</p>`;
   box.innerHTML = html;
 }
 
@@ -1196,7 +1271,7 @@ function renderRecentDispatch(){
   if(list.length===0){ tbl.innerHTML = emptyRow(6,'હજુ કોઈ ડિસ્પેચ એન્ટ્રી નથી'); return; }
   tbl.innerHTML = `<tr><th>તારીખ</th><th>ક્વોલિટી</th><th>તાકા નં.</th><th class="num">મીટર</th><th>નોંધ</th><th></th></tr>` +
     list.map(d=>`<tr>
-      <td>${d.date}</td><td><b>${esc(d.quality)}</b></td><td>${esc(d.taka)||'—'}</td>
+      <td>${fmtDate(d.date)}</td><td><b>${esc(d.quality)}</b></td><td>${esc(d.taka)||'—'}</td>
       <td class="num">${fmt(d.mts)}</td><td class="muted">${esc(d.note)||'—'}</td>
       <td class="row-actions">
         <button class="btn edit" onclick="editDispatch('${d.id}')">એડિટ</button>
@@ -1211,7 +1286,7 @@ function renderRecentOut(){
   if(list.length===0){ tbl.innerHTML = emptyRow(8,'હજુ કોઈ આઉટ એન્ટ્રી નથી'); return; }
   tbl.innerHTML = `<tr><th>તારીખ</th><th>Machine</th><th>તાકા નં.</th><th>અસર થયેલા બીમ</th><th>ક્વોલિટી</th><th class="num">આઉટ મીટર</th><th>નોંધ</th><th></th></tr>` +
     list.map(o=>`<tr>
-      <td>${o.date}</td><td><b>${esc(o.machine)}</b></td><td>${esc(o.taka)||'—'}</td><td>${esc((o.beams||[]).map(x=>x.beamNo).join(', ')||'—')}</td>
+      <td>${fmtDate(o.date)}</td><td><b>${esc(o.machine)}</b></td><td>${esc(o.taka)||'—'}</td><td>${esc((o.beams||[]).map(x=>x.beamNo).join(', ')||'—')}</td>
       <td class="muted">${esc(o.quality)||'—'}</td>
       <td class="num">${fmt(o.mts)}</td><td class="muted">${esc(o.note)||'—'}</td>
       <td class="row-actions">
@@ -1317,7 +1392,7 @@ function renderHistory(){
         const b = r.obj;
         return `<tr>
           <td><span class="tag ${b.status==='active'?'ok':'warn'}">બીમ</span></td>
-          <td>${b.date}</td><td><b>${esc(b.machine)}</b></td><td>${esc(b.beamNo)}</td>
+          <td>${fmtDate(b.date)}</td><td><b>${esc(b.machine)}</b></td><td>${esc(b.beamNo)}</td>
           <td class="muted">From: ${esc(b.from)} · તાર: ${esc(b.taar)}${b.quality?' · ક્વોલિટી: '+esc(b.quality):''}${b.pic?' · PIC: '+esc(b.pic):''}</td>
           <td class="num">${fmt(b.remainingMts)}/${fmt(b.totalMts)}</td>
           <td class="row-actions">
@@ -1330,7 +1405,7 @@ function renderHistory(){
         const beamNames = (o.beams||[]).map(x=>x.beamNo).join(', ')||'—';
         return `<tr>
           <td><span class="tag warn">આઉટ</span></td>
-          <td>${o.date}</td><td><b>${esc(o.machine)}</b></td><td>${esc(beamNames)}</td>
+          <td>${fmtDate(o.date)}</td><td><b>${esc(o.machine)}</b></td><td>${esc(beamNames)}</td>
           <td class="muted">${o.taka?('તાકા: '+esc(o.taka)+' · '):''}${o.quality?('ક્વોલિટી: '+esc(o.quality)+' · '):''}${esc(o.note)||'—'}</td>
           <td class="num">${fmt(o.mts)}</td>
           <td class="row-actions">
@@ -1342,7 +1417,7 @@ function renderHistory(){
         const d = r.obj;
         return `<tr>
           <td><span class="tag ok">ડિસ્પેચ</span></td>
-          <td>${d.date}</td><td class="muted">—</td><td class="muted">—</td>
+          <td>${fmtDate(d.date)}</td><td class="muted">—</td><td class="muted">—</td>
           <td class="muted">ક્વોલિટી: ${esc(d.quality)}${d.taka?(' · તાકા: '+esc(d.taka)):''}${d.note?(' · '+esc(d.note)):''}</td>
           <td class="num">${fmt(d.mts)}</td>
           <td class="row-actions">
@@ -1410,6 +1485,7 @@ async function importOldData(){
 // ---------- Refresh all ----------
 function refreshAll(){
   renderDashboard();
+  renderMachineLookup();
   renderRecentBeams();
   renderMachinesTable();
   populateMachinePicker();
