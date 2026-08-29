@@ -302,8 +302,9 @@
           <input type="text" id="f_note" placeholder="કોઈ વધારાની નોંધ...">
         </div>
       </form>
+      <div id="f_existingBeamsBox" style="margin:10px 0;"></div>
       <button class="btn thread" onclick="submitBeam()">+ બીમ ઉમેરો</button>
-      <p class="hint">નોંધ: જો આ Machine No. પર પહેલેથી ચાલુ બીમ હશે, તો નવો બીમ ઉમેરાયા પછી નવો બીમ "ચાલુ" ગણાશે અને જૂનો બીમ ઇતિહાસમાં રહેશે.</p>
+      <p class="hint">નોંધ: આ Machine No. પર જો પહેલેથી ચાલુ બીમ(ો) હોય, તો ઉપર checkbox દેખાશે — જે બીમ પર ✓ કરશો એ "પૂરી" ગણાઈને બંધ થઈ જશે, બાકીની ચાલુ જ રહેશે (2 બીમ સાથે ચાલતી હોય તો).</p>
     </div>
 
     <div class="card">
@@ -453,7 +454,7 @@
   <section id="wages" class="view">
     <div class="card">
       <h2>રોજની મીટર એન્ટ્રી (પગાર માટે)</h2>
-      <p class="hint" style="margin-top:-6px;">અહીં દરરોજ મશીન વાઈઝ મીટર નોંધો — આ "આઉટ કાપડ એન્ટ્રી" ગણાશે (બીમ અને સ્ટોક બંને અપડેટ થશે), અને નીચે પગાર આપોઆપ ગણાશે.</p>
+      <p class="hint" style="margin-top:-6px;">અહીં દરરોજ મશીન વાઈઝ કારીગરે બનાવેલા મીટર નોંધો — આ ફક્ત પગાર ગણવા માટે વપરાય છે, બીમ કે સ્ટોકને અસર થતી નથી.</p>
       <div class="form-grid">
         <div class="field">
           <label>Machine No.</label>
@@ -468,6 +469,11 @@
           <input type="number" id="w_rate" min="0" step="0.01" placeholder="દા.ત. 5" onchange="onWageRateChange()">
         </div>
         <div class="field">
+          <label>કારીગરનું નામ</label>
+          <input type="text" id="w_worker" list="workerNamesList" placeholder="કારીગરનું નામ">
+          <datalist id="workerNamesList"></datalist>
+        </div>
+        <div class="field">
           <label>તારીખ</label>
           <input type="date" id="w_date">
         </div>
@@ -477,12 +483,21 @@
         </div>
       </div>
       <p class="hint" id="w_hint"></p>
+      <p class="hint">નોંધ: આ એન્ટ્રી ફક્ત પગાર ગણવા માટે છે — તેનાથી બીમના બાકી મીટર કે સ્ટોકમાં કોઈ ફેરફાર થશે નહીં. બીમમાંથી મીટર ઓછા કરવા માટે "આઉટ કાપડ એન્ટ્રી" પેજ વાપરો.</p>
       <button class="btn thread" onclick="submitWageEntry()">+ મીટર નોંધો</button>
     </div>
 
     <div class="card">
-      <h2>તાજેતરની રોજની એન્ટ્રી</h2>
-      <div class="table-wrap"><table id="wageRecentTable"></table></div>
+      <h2>કારીગરની સંપૂર્ણ હિસ્ટ્રી</h2>
+      <p class="hint" style="margin-top:-6px;">કારીગરનું નામ લખો — તેણે કયા મશીન પર કેટલું કામ કર્યું, કેટલા મીટર બનાવ્યા અને કુલ પગાર કેટલો થાય એ બધું અહીં દેખાશે.</p>
+      <div class="form-grid">
+        <div class="field" style="grid-column:1/-1;">
+          <label>કારીગરનું નામ</label>
+          <input type="text" id="kh_name" list="workerNamesList" placeholder="કારીગરનું નામ લખો..." oninput="renderKarigarHistory()">
+        </div>
+      </div>
+      <div id="karigarHistoryResult"></div>
+      <button class="btn edit" onclick="printKarigarHistory()" style="margin-top:12px;">🖨 પ્રિન્ટ / PDF</button>
     </div>
 
     <div class="card">
@@ -519,6 +534,7 @@
           <option value="all">બધું</option>
           <option value="beam">બીમ એન્ટ્રી</option>
           <option value="out">આઉટ કાપડ એન્ટ્રી</option>
+          <option value="wage">પગાર એન્ટ્રી</option>
           <option value="dispatch">ડિસ્પેચ / વેચાણ</option>
         </select>
         <select id="h_machine">
@@ -558,6 +574,7 @@ let beams = [];
 let outs = [];
 let dispatches = [];
 let rates = {}; // machine number -> ₹ per meter (for wage calculation)
+let wageEntries = []; // daily karigar meter entries for wage tracking only — never touches beams/stock
 let dataReady = false;
 let lastSavedJSON = '';
 
@@ -571,7 +588,7 @@ function setSyncStatus(state){
 }
 
 function snapshotJSON(){
-  return JSON.stringify({beams, outs, dispatches, rates});
+  return JSON.stringify({beams, outs, dispatches, rates, wageEntries});
 }
 
 async function loadAllData(){
@@ -582,8 +599,9 @@ async function loadAllData(){
     outs = parsed.outs || [];
     dispatches = parsed.dispatches || [];
     rates = parsed.rates || {};
+    wageEntries = parsed.wageEntries || [];
   }catch(e){
-    beams = []; outs = []; dispatches = []; rates = {};
+    beams = []; outs = []; dispatches = []; rates = {}; wageEntries = [];
   }
   // Migrate older out-entries (single beamId/beamNo) to the new multi-beam schema
   let migrated = false;
@@ -633,6 +651,7 @@ async function pollForRemoteChanges(){
         outs = parsed.outs || [];
         dispatches = parsed.dispatches || [];
         rates = parsed.rates || {};
+        wageEntries = parsed.wageEntries || [];
         lastSavedJSON = json;
         refreshAll();
       }
@@ -747,7 +766,7 @@ function activeBeamsForMachine(machineNo){
   return beamsForMachine(machineNo).filter(b=>b.status==='active');
 }
 
-async function addBeam(data){
+async function addBeam(data, closeBeamIds){
   const seq = beams.length ? Math.max(...beams.map(b=>b.seq||0))+1 : 1;
   const beam = {
     id: uid(), seq,
@@ -757,6 +776,12 @@ async function addBeam(data){
     date: data.date, note: data.note||'', status:'active'
   };
   beams.push(beam);
+  if(closeBeamIds && closeBeamIds.length){
+    closeBeamIds.forEach(id=>{
+      const old = beams.find(b=>b.id===id);
+      if(old) old.status = 'finished';
+    });
+  }
   await saveAll();
   return beam;
 }
@@ -784,6 +809,30 @@ async function addOut(data){
   });
   await saveAll();
   return {ok:true, beams:active};
+}
+
+// Wage entry: a simple daily "machine + meters + karigar" record used only
+// for wage/karigar-history calculations. It never touches beam remaining
+// meters or finished-cloth stock — only the "આઉટ કાપડ એન્ટ્રી" form (addOut,
+// above) does that.
+async function addWageEntry(data){
+  const mts = parseFloat(data.mts);
+  if(!mts || mts<=0) return {ok:false, msg:'માન્ય મીટર દાખલ કરો.'};
+  const entry = {
+    id: uid(), machine: data.machine, mts,
+    worker: (data.worker||'').trim(), date: data.date, note: data.note||''
+  };
+  wageEntries.push(entry);
+  await saveAll();
+  return {ok:true};
+}
+
+async function deleteWageEntry(id){
+  if(!confirm('આ પગાર એન્ટ્રી ડિલીટ કરવી છે?')) return;
+  wageEntries = wageEntries.filter(o=>o.id!==id);
+  await saveAll();
+  toast('પગાર એન્ટ્રી ડિલીટ થઈ');
+  refreshAll();
 }
 
 async function deleteBeam(id){
@@ -951,6 +1000,32 @@ function editOut(id){
   });
 }
 
+function editWageEntry(id){
+  const o = wageEntries.find(x=>x.id===id);
+  if(!o) return;
+  const body = `
+    <div class="form-grid" style="grid-template-columns:1fr 1fr;">
+      <div class="field"><label>Machine No.</label><input id="em_w_machine" value="${escAttr(o.machine)}"></div>
+      <div class="field"><label>મીટર</label><input id="em_w_mts" type="number" step="0.01" value="${o.mts}"></div>
+      <div class="field"><label>કારીગરનું નામ</label><input id="em_w_worker" list="workerNamesList" value="${escAttr(o.worker)}"></div>
+      <div class="field"><label>તારીખ</label><input id="em_w_date" type="date" value="${o.date}"></div>
+      <div class="field" style="grid-column:1/-1;"><label>નોંધ</label><input id="em_w_note" value="${escAttr(o.note)}"></div>
+    </div>
+    <p class="hint">આ એન્ટ્રી ફક્ત પગાર ગણવા માટે છે — તેનાથી બીમ કે સ્ટોકને અસર થતી નથી.</p>`;
+  openModal(`પગાર એન્ટ્રી એડિટ કરો`, body, ()=>{
+    o.machine = document.getElementById('em_w_machine').value.trim();
+    o.mts = parseFloat(document.getElementById('em_w_mts').value)||0;
+    o.worker = document.getElementById('em_w_worker').value.trim();
+    o.date = document.getElementById('em_w_date').value || o.date;
+    o.note = document.getElementById('em_w_note').value.trim();
+    saveAll().then(()=>{
+      toast('✅ પગાર એન્ટ્રી અપડેટ થઈ');
+      closeEditModal();
+      refreshAll();
+    });
+  });
+}
+
 function editDispatch(id){
   const d = dispatches.find(x=>x.id===id);
   if(!d) return;
@@ -993,13 +1068,34 @@ async function submitBeam(){
   if(!from || !machine || !beamNo || !taar || !mts){
     toast('બધી જરૂરી વિગત ભરો'); return;
   }
-  await addBeam({from, machine, beamNo, taar, mts, date, note, quality, pic});
-  toast(`✅ બીમ ${beamNo} મશીન ${machine} પર ઉમેરાયો`);
+  const closeBeamIds = Array.from(document.querySelectorAll('.closeBeamCheck:checked')).map(cb=>cb.value);
+  await addBeam({from, machine, beamNo, taar, mts, date, note, quality, pic}, closeBeamIds);
+  const closedMsg = closeBeamIds.length ? ` — ${closeBeamIds.length} જૂની બીમ પૂરી કરી` : '';
+  toast(`✅ બીમ ${beamNo} મશીન ${machine} પર ઉમેરાયો${closedMsg}`);
   document.getElementById('beamForm').reset();
   document.getElementById('f_date').value = todayStr();
+  document.getElementById('f_existingBeamsBox').innerHTML = '';
   refreshAll();
   document.getElementById('f_from').focus();
 }
+
+// મશીન નંબર લખતાં, એ મશીન પર હાલ ચાલુ બીમ(ો) હોય તો checkbox તરીકે બતાવે —
+// જેથી નવી બીમ ઉમેરતી વખતે જૂની (ઈચ્છા હોય એ) બંધ કરી શકાય.
+function renderExistingBeamsForNewEntry(){
+  const box = document.getElementById('f_existingBeamsBox');
+  if(!box) return;
+  const m = document.getElementById('f_machine').value.trim();
+  if(!m){ box.innerHTML=''; return; }
+  const active = activeBeamsForMachine(m);
+  if(active.length===0){ box.innerHTML=''; return; }
+  box.innerHTML = `<p class="hint" style="margin-bottom:6px;">Machine ${esc(m)} પર હાલ ચાલુ બીમ:</p>` +
+    active.map(b=>`
+      <label style="display:flex; align-items:center; gap:8px; margin:4px 0; font-size:14px;">
+        <input type="checkbox" class="closeBeamCheck" value="${b.id}">
+        Beam ${esc(b.beamNo)} — ${esc(b.quality)||'—'} — બાકી ${fmt(b.remainingMts)} મીટર — <b>આ પૂરી કરો</b>
+      </label>`).join('');
+}
+document.getElementById('f_machine').addEventListener('input', renderExistingBeamsForNewEntry);
 
 function renderRecentBeams(){
   const tbl = document.getElementById('recentBeamsTable');
@@ -1419,6 +1515,7 @@ function productionReportHTML(monthVal, machineFilter, opts){
     html += renderProdHalfTable(`16 થી ${totalDays}`, half2, byDate);
     html += `<p>16-${totalDays} પગાર: <b>₹${fmt(half2Mts*rate)}</b></p>`;
     html += `<p class="grand" style="font-weight:700; margin-top:10px;">મહિનાનું કુલ ઉત્પાદન: ${fmt(grandTotal)} મીટર &nbsp;·&nbsp; કુલ પગાર: ₹${fmt(grandTotal*rate)}</p>`;
+    html += renderWorkerBreakdown(entries, rate);
     return html;
   } else {
     const machines = Array.from(new Set(entries.map(o=>o.machine))).sort(naturalCompare);
@@ -1450,6 +1547,43 @@ function productionReportHTML(monthVal, machineFilter, opts){
   }
 }
 
+// Groups a set of wage entries by the karigar name recorded on each entry
+// and totals their meters/wage at the given rate.
+function renderWorkerBreakdown(entries, rate){
+  const withWorker = entries.filter(o=>o.worker);
+  if(withWorker.length===0) return '';
+  const byWorker = {};
+  withWorker.forEach(o=>{
+    byWorker[o.worker] = (byWorker[o.worker]||0) + o.mts;
+  });
+  const names = Object.keys(byWorker).sort((a,b)=>byWorker[b]-byWorker[a]);
+  return `<div class="table-wrap"><table>
+    <tr><th colspan="3">કારીગર પ્રમાણે પગાર</th></tr>
+    <tr><th>કારીગર</th><th class="num">મીટર</th><th class="num">પગાર (₹)</th></tr>` +
+    names.map(n=>`<tr><td>${esc(n)}</td><td class="num">${fmt(byWorker[n])}</td><td class="num">₹${fmt(byWorker[n]*rate)}</td></tr>`).join('') +
+    `</table></div>`;
+}
+
+// Same idea as renderWorkerBreakdown but for the "all machines" view, where
+// each entry may belong to a different machine with a different rate.
+function renderWorkerBreakdownMultiRate(entries){
+  const withWorker = entries.filter(o=>o.worker);
+  if(withWorker.length===0) return '';
+  const byWorker = {};
+  withWorker.forEach(o=>{
+    const rate = rates[o.machine] || 0;
+    if(!byWorker[o.worker]) byWorker[o.worker] = {mts:0, wage:0};
+    byWorker[o.worker].mts += o.mts;
+    byWorker[o.worker].wage += o.mts*rate;
+  });
+  const names = Object.keys(byWorker).sort((a,b)=>byWorker[b].mts-byWorker[a].mts);
+  return `<div class="table-wrap"><table>
+    <tr><th colspan="3">કારીગર પ્રમાણે પગાર (બધા મશીન)</th></tr>
+    <tr><th>કારીગર</th><th class="num">મીટર</th><th class="num">પગાર (₹)</th></tr>` +
+    names.map(n=>`<tr><td>${esc(n)}</td><td class="num">${fmt(byWorker[n].mts)}</td><td class="num">₹${fmt(byWorker[n].wage)}</td></tr>`).join('') +
+    `</table></div>`;
+}
+
 async function updateMachineRate(machine, value){
   rates[machine] = parseFloat(value) || 0;
   await saveAll();
@@ -1470,6 +1604,9 @@ function printProductionReport(){
 }
 
 // ---------- Wages (પગાર) tab ----------
+// Wage entries are stored separately from "outs" (see addWageEntry above) —
+// they are only used for wage/karigar-history calculation and never change
+// beam remaining meters or finished-cloth stock.
 function populateWageMachinePickers(){
   const list = machineList();
   const wSel = document.getElementById('w_machine');
@@ -1486,6 +1623,13 @@ function populateWageMachinePickers(){
   }
 }
 
+function populateWorkerNamesList(){
+  const dl = document.getElementById('workerNamesList');
+  if(!dl) return;
+  const names = Array.from(new Set(wageEntries.map(o=>o.worker).filter(Boolean))).sort((a,b)=>a.localeCompare(b));
+  dl.innerHTML = names.map(n=>`<option value="${escAttr(n)}">`).join('');
+}
+
 function onWageMachinePick(){
   const m = document.getElementById('w_machine').value;
   const hint = document.getElementById('w_hint');
@@ -1494,7 +1638,7 @@ function onWageMachinePick(){
   if(!m){ hint.textContent=''; if(rateEl) rateEl.value=''; return; }
   const active = activeBeamsForMachine(m);
   hint.textContent = active.length===0
-    ? '⚠ આ મશીન પર કોઈ ચાલુ બીમ નથી — પહેલા "બીમ એન્ટ્રી" (F1) માં બીમ ઉમેરો.'
+    ? '⚠ આ મશીન પર કોઈ ચાલુ બીમ નથી.'
     : `ચાલુ ક્વોલિટી: ${esc(active[0].quality)||'—'} · બાકી મીટર: ${fmt(active[0].remainingMts)}`;
   if(rateEl) rateEl.value = rates[m] || '';
 }
@@ -1509,15 +1653,14 @@ async function onWageRateChange(){
 async function submitWageEntry(){
   const machine = document.getElementById('w_machine').value;
   const mts = document.getElementById('w_mts').value;
+  const worker = document.getElementById('w_worker').value.trim();
   const date = document.getElementById('w_date').value || todayStr();
   const note = document.getElementById('w_note').value.trim();
   if(!machine){ toast('Machine No. પસંદ કરો'); return; }
-  const active = activeBeamsForMachine(machine);
-  if(active.length===0){ toast('આ મશીન પર ચાલુ બીમ નથી'); return; }
   if(!mts || parseFloat(mts)<=0){ toast('માન્ય મીટર દાખલ કરો'); return; }
-  const res = await addOut({machine, mts, taka:'', date, note});
+  const res = await addWageEntry({machine, mts, date, note, worker});
   if(!res.ok){ toast(res.msg); return; }
-  toast(`✅ ${fmt(mts)} મીટર નોંધાયા — Machine ${machine}`);
+  toast(`✅ ${fmt(mts)} મીટર નોંધાયા — Machine ${machine}${worker?' · '+worker:''}`);
   document.getElementById('w_mts').value='';
   document.getElementById('w_note').value='';
   document.getElementById('w_date').value = todayStr();
@@ -1528,34 +1671,93 @@ async function submitWageEntry(){
 function renderWageRecent(){
   const tbl = document.getElementById('wageRecentTable');
   if(!tbl) return;
-  const list = [...outs].sort((a,b)=>b.id.localeCompare(a.id)).slice(0,15);
+  const list = [...wageEntries].sort((a,b)=>b.id.localeCompare(a.id)).slice(0,15);
   if(list.length===0){ tbl.innerHTML = emptyRow(6,'હજુ કોઈ એન્ટ્રી નથી'); return; }
-  tbl.innerHTML = `<tr><th>તારીખ</th><th>Machine</th><th>ક્વોલિટી</th><th class="num">મીટર</th><th>નોંધ</th><th></th></tr>` +
+  tbl.innerHTML = `<tr><th>તારીખ</th><th>Machine</th><th class="num">મીટર</th><th>કારીગર</th><th>નોંધ</th><th></th></tr>` +
     list.map(o=>`<tr>
-      <td>${fmtDate(o.date)}</td><td><b>${esc(o.machine)}</b></td><td class="muted">${esc(o.quality)||'—'}</td>
-      <td class="num">${fmt(o.mts)}</td><td class="muted">${esc(o.note)||'—'}</td>
+      <td>${fmtDate(o.date)}</td><td><b>${esc(o.machine)}</b></td>
+      <td class="num">${fmt(o.mts)}</td><td class="muted">${esc(o.worker)||'—'}</td>
+      <td class="muted">${esc(o.note)||'—'}</td>
       <td class="row-actions">
-        <button class="btn edit" onclick="editOut('${o.id}')">એડિટ</button>
-        <button class="btn danger" onclick="deleteOut('${o.id}')">ડિલીટ</button>
+        <button class="btn edit" onclick="editWageEntry('${o.id}')">એડિટ</button>
+        <button class="btn danger" onclick="deleteWageEntry('${o.id}')">ડિલીટ</button>
       </td>
     </tr>`).join('');
 }
 
-function renderWageRecentEntries(){
-  const tbl = document.getElementById('wageRecentTable');
-  if(!tbl) return;
-  const list = [...outs].sort((a,b)=>b.id.localeCompare(a.id)).slice(0,15);
-  if(list.length===0){ tbl.innerHTML = emptyRow(6,'હજુ કોઈ એન્ટ્રી નથી'); return; }
-  tbl.innerHTML = `<tr><th>તારીખ</th><th>Machine</th><th>ક્વોલિટી</th><th class="num">મીટર</th><th>નોંધ</th><th></th></tr>` +
-    list.map(o=>`<tr>
-      <td>${fmtDate(o.date)}</td><td><b>${esc(o.machine)}</b></td>
-      <td class="muted">${esc(o.quality)||'—'}</td>
-      <td class="num">${fmt(o.mts)}</td><td class="muted">${esc(o.note)||'—'}</td>
-      <td class="row-actions">
-        <button class="btn edit" onclick="editOut('${o.id}')">એડિટ</button>
-        <button class="btn danger" onclick="deleteOut('${o.id}')">ડિલીટ</button>
-      </td>
-    </tr>`).join('');
+// ---------- Wage report (based on wageEntries only, 1-15 / 16-end split) ----------
+function wageReportHTML(monthVal, machineFilter, opts){
+  opts = opts || {};
+  const printMode = !!opts.printMode;
+  const [yearStr, monthStr] = monthVal.split('-');
+  const year = parseInt(yearStr,10), month = parseInt(monthStr,10);
+  const totalDays = daysInMonth(year, month);
+
+  let entries = wageEntries.filter(o => (o.date||'').startsWith(monthVal));
+  if(machineFilter) entries = entries.filter(o=>o.machine===machineFilter);
+
+  if(entries.length===0){
+    return '<p class="hint">આ મહિનામાં કોઈ પગાર એન્ટ્રી નોંધાયેલ નથી.</p>';
+  }
+
+  if(machineFilter){
+    const rate = rates[machineFilter] || 0;
+    const byDate = {};
+    entries.forEach(o=>{ byDate[o.date] = (byDate[o.date]||0) + o.mts; });
+    const dates = Object.keys(byDate).sort();
+    const half1 = dates.filter(d => dayOfMonth(d) <= 15);
+    const half2 = dates.filter(d => dayOfMonth(d) > 15);
+    const half1Mts = half1.reduce((s,d)=>s+byDate[d],0);
+    const half2Mts = half2.reduce((s,d)=>s+byDate[d],0);
+    const grandTotal = half1Mts + half2Mts;
+
+    let html = opts.hideTitle ? '' : `<h3 style="margin-top:16px;">Machine ${esc(machineFilter)} — ${monthVal}</h3>`;
+
+    if(printMode){
+      html += `<p>રેટ: <b>₹${fmt(rate)}</b> પ્રતિ મીટર</p>`;
+    } else {
+      html += `<div class="field" style="max-width:220px; margin:8px 0 14px;">
+        <label>રેટ (₹ પ્રતિ મીટર)</label>
+        <input type="number" step="0.01" min="0" value="${rate||''}" placeholder="દા.ત. 5" onchange="updateMachineRate('${escAttr(machineFilter)}', this.value)">
+      </div>`;
+    }
+
+    html += renderProdHalfTable('1 થી 15', half1, byDate);
+    html += `<p>1-15 પગાર: <b>₹${fmt(half1Mts*rate)}</b></p>`;
+    html += renderProdHalfTable(`16 થી ${totalDays}`, half2, byDate);
+    html += `<p>16-${totalDays} પગાર: <b>₹${fmt(half2Mts*rate)}</b></p>`;
+    html += `<p class="grand" style="font-weight:700; margin-top:10px;">મહિનાનું કુલ: ${fmt(grandTotal)} મીટર &nbsp;·&nbsp; કુલ પગાર: ₹${fmt(grandTotal*rate)}</p>`;
+    html += renderWorkerBreakdown(entries, rate);
+    return html;
+  } else {
+    const machines = Array.from(new Set(entries.map(o=>o.machine))).sort(naturalCompare);
+    let grandMts = 0, grandWage = 0;
+    const rows = machines.map(m=>{
+      const rate = rates[m] || 0;
+      const mEntries = entries.filter(o=>o.machine===m);
+      const half1 = mEntries.filter(o=>dayOfMonth(o.date)<=15).reduce((s,o)=>s+o.mts,0);
+      const half2 = mEntries.filter(o=>dayOfMonth(o.date)>15).reduce((s,o)=>s+o.mts,0);
+      const total = half1+half2;
+      const wage = total*rate;
+      grandMts += total; grandWage += wage;
+      const rateCell = printMode
+        ? `₹${fmt(rate)}`
+        : `<input type="number" step="0.01" min="0" style="width:90px;" value="${rate||''}" placeholder="0" onchange="updateMachineRate('${escAttr(m)}', this.value)">`;
+      return `<tr>
+        <td><b>${esc(m)}</b></td>
+        <td class="num">${rateCell}</td>
+        <td class="num">${fmt(half1)}</td>
+        <td class="num">${fmt(half2)}</td>
+        <td class="num">${fmt(total)}</td>
+        <td class="num">₹${fmt(wage)}</td>
+      </tr>`;
+    }).join('');
+    let html = `<div class="table-wrap"><table>
+      <tr><th>Machine</th><th class="num">રેટ (₹/મીટર)</th><th class="num">1-15</th><th class="num">16-${totalDays}</th><th class="num">કુલ મીટર</th><th class="num">પગાર (₹)</th></tr>${rows}</table></div>`;
+    html += `<p class="grand" style="font-weight:700; margin-top:10px;">બધા મશીનનું કુલ: ${fmt(grandMts)} મીટર &nbsp;·&nbsp; કુલ પગાર: ₹${fmt(grandWage)}</p>`;
+    html += renderWorkerBreakdownMultiRate(entries);
+    return html;
+  }
 }
 
 function renderWageReport(){
@@ -1565,7 +1767,7 @@ function renderWageReport(){
   if(monthEl && !monthEl.value) monthEl.value = currentMonthVal();
   const monthVal = monthEl ? monthEl.value : currentMonthVal();
   const machineFilter = document.getElementById('wage_machine').value;
-  box.innerHTML = productionReportHTML(monthVal, machineFilter, {hideTitle:!machineFilter});
+  box.innerHTML = wageReportHTML(monthVal, machineFilter, {hideTitle:!machineFilter});
 }
 document.getElementById('wage_machine').addEventListener('change', renderWageReport);
 document.getElementById('wage_month').addEventListener('change', renderWageReport);
@@ -1578,7 +1780,55 @@ function printWageReport(){
   box.innerHTML = `
     <h1>લૂમ બીમ મેનેજર</h1>
     <p>${title} &nbsp;·&nbsp; મહિનો: <b>${monthVal}</b></p>
-    ${productionReportHTML(monthVal, machineFilter, {printMode:true, hideTitle:true})}
+    ${wageReportHTML(monthVal, machineFilter, {printMode:true, hideTitle:true})}
+  `;
+  setTimeout(()=>window.print(), 100);
+}
+
+// ---------- Karigar (worker) full history — across all machines, all time ----------
+function karigarHistoryHTML(name){
+  const entries = wageEntries.filter(o=>o.worker && o.worker.trim().toLowerCase()===name.trim().toLowerCase());
+  if(entries.length===0) return '<p class="hint">આ નામની કોઈ પગાર એન્ટ્રી મળી નથી.</p>';
+  const machines = Array.from(new Set(entries.map(o=>o.machine))).sort(naturalCompare);
+  let grandMts = 0, grandWage = 0;
+  const rows = machines.map(m=>{
+    const rate = rates[m] || 0;
+    const total = entries.filter(o=>o.machine===m).reduce((s,o)=>s+o.mts,0);
+    const wage = total*rate;
+    grandMts += total; grandWage += wage;
+    return `<tr><td><b>${esc(m)}</b></td><td class="num">${fmt(total)}</td><td class="num">₹${fmt(rate)}</td><td class="num">₹${fmt(wage)}</td></tr>`;
+  }).join('');
+  let html = `<div class="table-wrap"><table>
+    <tr><th colspan="4">મશીન પ્રમાણે કુલ કામ — ${esc(name)}</th></tr>
+    <tr><th>Machine</th><th class="num">કુલ મીટર</th><th class="num">રેટ (₹/મીટર)</th><th class="num">પગાર (₹)</th></tr>
+    ${rows}
+  </table></div>`;
+  html += `<p class="grand" style="font-weight:700; margin-top:10px;">કુલ મીટર: ${fmt(grandMts)} &nbsp;·&nbsp; કુલ પગાર: ₹${fmt(grandWage)}</p>`;
+
+  const sortedEntries = [...entries].sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+  html += `<div class="table-wrap" style="margin-top:14px;"><table>
+    <tr><th colspan="4">દરેક દિવસની વિગત</th></tr>
+    <tr><th>તારીખ</th><th>Machine</th><th class="num">મીટર</th><th>નોંધ</th></tr>` +
+    sortedEntries.map(o=>`<tr><td>${fmtDate(o.date)}</td><td><b>${esc(o.machine)}</b></td><td class="num">${fmt(o.mts)}</td><td class="muted">${esc(o.note)||'—'}</td></tr>`).join('') +
+    `</table></div>`;
+  return html;
+}
+
+function renderKarigarHistory(){
+  const box = document.getElementById('karigarHistoryResult');
+  if(!box) return;
+  const name = document.getElementById('kh_name').value.trim();
+  box.innerHTML = name ? karigarHistoryHTML(name) : '';
+}
+
+function printKarigarHistory(){
+  const name = document.getElementById('kh_name').value.trim();
+  if(!name){ toast('પહેલા કારીગરનું નામ લખો'); return; }
+  const box = document.getElementById('printArea');
+  box.innerHTML = `
+    <h1>લૂમ બીમ મેનેજર</h1>
+    <p>કારીગર હિસ્ટ્રી — <b>${esc(name)}</b></p>
+    ${karigarHistoryHTML(name)}
   `;
   setTimeout(()=>window.print(), 100);
 }
@@ -1743,6 +1993,9 @@ function renderHistory(){
   if(type==='all' || type==='out'){
     outs.forEach(o=>rows.push({kind:'out', date:o.date, obj:o}));
   }
+  if(type==='all' || type==='wage'){
+    wageEntries.forEach(o=>rows.push({kind:'wage', date:o.date, obj:o}));
+  }
   if(type==='all' || type==='dispatch'){
     dispatches.forEach(d=>rows.push({kind:'dispatch', date:d.date, obj:d}));
   }
@@ -1759,6 +2012,8 @@ function renderHistory(){
       } else if(r.kind==='out'){
         const beamNames = (r.obj.beams||[]).map(x=>x.beamNo).join(' ');
         return [r.obj.machine, beamNames, r.obj.note, r.obj.taka, r.obj.quality].join(' ').toLowerCase().includes(q);
+      } else if(r.kind==='wage'){
+        return [r.obj.machine, r.obj.note, r.obj.worker].join(' ').toLowerCase().includes(q);
       } else {
         return [r.obj.quality, r.obj.note, r.obj.taka].join(' ').toLowerCase().includes(q);
       }
@@ -1793,6 +2048,18 @@ function renderHistory(){
           <td class="row-actions">
             <button class="btn edit" onclick="editOut('${o.id}')">એડિટ</button>
             <button class="btn danger" onclick="deleteOut('${o.id}')">ડિલીટ</button>
+          </td>
+        </tr>`;
+      } else if(r.kind==='wage'){
+        const o = r.obj;
+        return `<tr>
+          <td><span class="tag ok">પગાર</span></td>
+          <td>${fmtDate(o.date)}</td><td><b>${esc(o.machine)}</b></td><td class="muted">—</td>
+          <td class="muted">${o.worker?('કારીગર: '+esc(o.worker)+' · '):''}${esc(o.note)||'—'}</td>
+          <td class="num">${fmt(o.mts)}</td>
+          <td class="row-actions">
+            <button class="btn edit" onclick="editWageEntry('${o.id}')">એડિટ</button>
+            <button class="btn danger" onclick="deleteWageEntry('${o.id}')">ડિલીટ</button>
           </td>
         </tr>`;
       } else {
@@ -1878,8 +2145,10 @@ function refreshAll(){
   populateProdMachinePicker();
   renderProductionReport();
   populateWageMachinePickers();
+  populateWorkerNamesList();
   renderWageReport();
   renderWageRecent();
+  renderKarigarHistory();
   renderRecentDispatch();
   renderPendingDispatch();
   renderTakaHistory();
@@ -1899,7 +2168,7 @@ attachEnterNav(
   submitOut
 );
 attachEnterNav(
-  ['w_machine','w_mts','w_rate','w_date','w_note'],
+  ['w_machine','w_mts','w_rate','w_worker','w_date','w_note'],
   submitWageEntry
 );
 // (ડિસ્પેચ ફોર્મ માટે Enter handling d_taka/d_quality/d_mts પર અલગથી, ઉપર addTakaToPending() સાથે લાગેલું છે)
