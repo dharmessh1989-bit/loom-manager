@@ -175,6 +175,18 @@
   .sync-dot{ width:7px; height:7px; border-radius:50%; background:#7ee0a8; box-shadow:0 0 0 3px rgba(126,224,168,.2); }
   .sync-dot.busy{ background:#e8c26a; }
   @media(max-width:640px){ .sync-badge{ position:static; margin-top:6px; justify-content:flex-start; } }
+  #printArea{ display:none; }
+  @media print{
+    body > *:not(#printArea){ display:none !important; }
+    #printArea{ display:block !important; padding:20px; font-family:'Segoe UI','Noto Sans Gujarati',sans-serif; }
+    #printArea table{ width:100%; border-collapse:collapse; margin:10px 0 18px; }
+    #printArea th, #printArea td{ border:1px solid #999; padding:6px 8px; font-size:13px; text-align:left; }
+    #printArea th{ background:#eee; }
+    #printArea .num{ text-align:right; }
+    #printArea h1{ font-size:20px; margin-bottom:2px; }
+    #printArea h2{ font-size:16px; margin:18px 0 4px; }
+    #printArea .grand{ font-weight:700; font-size:15px; margin-top:8px; }
+  }
 </style>
 </head>
 <body>
@@ -197,6 +209,7 @@
   <button data-view="outEntry">આઉટ કાપડ એન્ટ્રી</button>
   <button data-view="stock">સ્ટોક / માલ મોકલ્યો</button>
   <button data-view="production">પ્રોડક્શન રિપોર્ટ</button>
+  <button data-view="wages">પગાર</button>
   <button data-view="history">હિસ્ટ્રી</button>
 </nav>
 
@@ -233,6 +246,7 @@
       <h2>પ્રોડક્શન (બધા મશીન)</h2>
       <p class="hint" style="margin-top:-6px;">મહિનો પસંદ કરો — દરેક મશીનનું એ મહિનાનું ઉત્પાદન (1-15, 16-end, કુલ) દેખાશે.</p>
       <input type="month" id="dash_prod_month" style="max-width:200px;">
+      <button class="btn edit" onclick="printDashboardProduction()" style="margin-left:8px;">🖨 પ્રિન્ટ કરો</button>
       <div id="dashProductionResult" style="margin-top:10px;"></div>
     </div>
 
@@ -416,8 +430,8 @@
   <!-- PRODUCTION REPORT -->
   <section id="production" class="view">
     <div class="card">
-      <h2>પ્રોડક્શન રિપોર્ટ (15-15 દિવસના હિસાબે)</h2>
-      <p class="hint" style="margin-top:-6px;">દર મહિનાની <b>1 થી 15</b> અને <b>16 થી મહિનાના છેલ્લા દિવસ</b> — બંને પીરિયડ અલગ-અલગ ગણાય છે (પગાર/હિસાબ પંદર-પંદર દિવસે થાય એ માટે).</p>
+      <h2>પ્રોડક્શન રિપોર્ટ + પગાર (15-15 દિવસના હિસાબે)</h2>
+      <p class="hint" style="margin-top:-6px;">દર મહિનાની <b>1 થી 15</b> અને <b>16 થી મહિનાના છેલ્લા દિવસ</b> — બંને પીરિયડ અલગ-અલગ ગણાય છે. દરેક મશીનનો રેટ (₹ પ્રતિ મીટર) એક વાર સેવ કરો, પછી પગાર આપોઆપ ગણાશે.</p>
       <div class="form-grid">
         <div class="field">
           <label>મશીન</label>
@@ -427,8 +441,72 @@
           <label>મહિનો</label>
           <input type="month" id="prod_month">
         </div>
+        <div class="field" style="justify-content:flex-end;">
+          <button class="btn edit" onclick="printProductionReport()">🖨 પ્રિન્ટ કરો</button>
+        </div>
       </div>
       <div id="productionReportResult"></div>
+    </div>
+  </section>
+
+  <!-- WAGES -->
+  <section id="wages" class="view">
+    <div class="card">
+      <h2>રોજની મીટર એન્ટ્રી (પગાર માટે)</h2>
+      <p class="hint" style="margin-top:-6px;">અહીં દરરોજ મશીન વાઈઝ મીટર નોંધો — આ "આઉટ કાપડ એન્ટ્રી" ગણાશે (બીમ અને સ્ટોક બંને અપડેટ થશે), અને નીચે પગાર આપોઆપ ગણાશે.</p>
+      <div class="form-grid">
+        <div class="field">
+          <label>Machine No.</label>
+          <select id="w_machine"><option value="">-- પસંદ કરો --</option></select>
+        </div>
+        <div class="field">
+          <label>મીટર</label>
+          <input type="number" id="w_mts" min="0" step="0.01" placeholder="દા.ત. 110">
+        </div>
+        <div class="field">
+          <label>રેટ (₹ પ્રતિ મીટર)</label>
+          <input type="number" id="w_rate" min="0" step="0.01" placeholder="દા.ત. 5" onchange="onWageRateChange()">
+        </div>
+        <div class="field">
+          <label>તારીખ</label>
+          <input type="date" id="w_date">
+        </div>
+        <div class="field" style="grid-column:1/-1;">
+          <label>નોંધ — વૈકલ્પિક</label>
+          <input type="text" id="w_note">
+        </div>
+      </div>
+      <p class="hint" id="w_hint"></p>
+      <button class="btn thread" onclick="submitWageEntry()">+ મીટર નોંધો</button>
+    </div>
+
+    <div class="card">
+      <h2>તાજેતરની રોજની એન્ટ્રી</h2>
+      <div class="table-wrap"><table id="wageRecentTable"></table></div>
+    </div>
+
+    <div class="card">
+      <h2>તાજેતરની રોજની એન્ટ્રી</h2>
+      <div class="table-wrap"><table id="wageRecentTable"></table></div>
+    </div>
+
+    <div class="card">
+      <h2>પગાર રિપોર્ટ (15-15 દિવસના હિસાબે)</h2>
+      <p class="hint" style="margin-top:-6px;">દરેક મશીનનો રેટ (₹ પ્રતિ મીટર) એક વાર સેવ કરો, પછી પગાર આપોઆપ ગણાશે.</p>
+      <div class="form-grid">
+        <div class="field">
+          <label>મશીન</label>
+          <select id="wage_machine"><option value="">-- બધા મશીન --</option></select>
+        </div>
+        <div class="field">
+          <label>મહિનો</label>
+          <input type="month" id="wage_month">
+        </div>
+        <div class="field" style="justify-content:flex-end;">
+          <button class="btn edit" onclick="printWageReport()">🖨 પ્રિન્ટ કરો</button>
+        </div>
+      </div>
+      <div id="wageReportResult"></div>
     </div>
   </section>
 
@@ -454,6 +532,8 @@
 
 </main>
 
+<div id="printArea"></div>
+
 <footer>Loom Beam Manager · ડેટા Firebase cloud માં સેવ થાય છે — https://dharmessh1989-bit.github.io/loom-manager/ પરથી કોઈ પણ PC કે મોબાઇલ ખોલો, એક જ ડેટા દેખાશે</footer>
 <div class="toast" id="toast"></div>
 
@@ -477,6 +557,7 @@ const FIREBASE_URL = 'https://krushnnal-packing-default-rtdb.asia-southeast1.fir
 let beams = [];
 let outs = [];
 let dispatches = [];
+let rates = {}; // machine number -> ₹ per meter (for wage calculation)
 let dataReady = false;
 let lastSavedJSON = '';
 
@@ -490,7 +571,7 @@ function setSyncStatus(state){
 }
 
 function snapshotJSON(){
-  return JSON.stringify({beams, outs, dispatches});
+  return JSON.stringify({beams, outs, dispatches, rates});
 }
 
 async function loadAllData(){
@@ -500,8 +581,9 @@ async function loadAllData(){
     beams = parsed.beams || [];
     outs = parsed.outs || [];
     dispatches = parsed.dispatches || [];
+    rates = parsed.rates || {};
   }catch(e){
-    beams = []; outs = []; dispatches = [];
+    beams = []; outs = []; dispatches = []; rates = {};
   }
   // Migrate older out-entries (single beamId/beamNo) to the new multi-beam schema
   let migrated = false;
@@ -550,6 +632,7 @@ async function pollForRemoteChanges(){
         beams = parsed.beams || [];
         outs = parsed.outs || [];
         dispatches = parsed.dispatches || [];
+        rates = parsed.rates || {};
         lastSavedJSON = json;
         refreshAll();
       }
@@ -1049,6 +1132,7 @@ async function submitOut(){
 
 // ---------- Stock / Dispatch view ----------
 document.getElementById('d_date').value = todayStr();
+document.getElementById('w_date').value = todayStr();
 
 function populateQualityDatalist(){
   const dl = document.getElementById('qualityOptions');
@@ -1296,6 +1380,7 @@ function renderProdHalfTable(label, dates, byDate){
 
 function productionReportHTML(monthVal, machineFilter, opts){
   opts = opts || {};
+  const printMode = !!opts.printMode;
   const [yearStr, monthStr] = monthVal.split('-');
   const year = parseInt(yearStr,10), month = parseInt(monthStr,10);
   const totalDays = daysInMonth(year, month);
@@ -1308,33 +1393,194 @@ function productionReportHTML(monthVal, machineFilter, opts){
   }
 
   if(machineFilter){
+    const rate = rates[machineFilter] || 0;
     const byDate = {};
     entries.forEach(o=>{ byDate[o.date] = (byDate[o.date]||0) + o.mts; });
     const dates = Object.keys(byDate).sort();
     const half1 = dates.filter(d => dayOfMonth(d) <= 15);
     const half2 = dates.filter(d => dayOfMonth(d) > 15);
-    const grandTotal = dates.reduce((s,d)=>s+byDate[d],0);
+    const half1Mts = half1.reduce((s,d)=>s+byDate[d],0);
+    const half2Mts = half2.reduce((s,d)=>s+byDate[d],0);
+    const grandTotal = half1Mts + half2Mts;
 
     let html = opts.hideTitle ? '' : `<h3 style="margin-top:16px;">Machine ${esc(machineFilter)} — ${monthVal}</h3>`;
+
+    if(printMode){
+      html += `<p>રેટ: <b>₹${fmt(rate)}</b> પ્રતિ મીટર</p>`;
+    } else {
+      html += `<div class="field" style="max-width:220px; margin:8px 0 14px;">
+        <label>રેટ (₹ પ્રતિ મીટર)</label>
+        <input type="number" step="0.01" min="0" value="${rate||''}" placeholder="દા.ત. 5" onchange="updateMachineRate('${escAttr(machineFilter)}', this.value)">
+      </div>`;
+    }
+
     html += renderProdHalfTable('1 થી 15', half1, byDate);
+    html += `<p>1-15 પગાર: <b>₹${fmt(half1Mts*rate)}</b></p>`;
     html += renderProdHalfTable(`16 થી ${totalDays}`, half2, byDate);
-    html += `<p style="font-weight:700; margin-top:10px;">મહિનાનું કુલ ઉત્પાદન: ${fmt(grandTotal)} મીટર</p>`;
+    html += `<p>16-${totalDays} પગાર: <b>₹${fmt(half2Mts*rate)}</b></p>`;
+    html += `<p class="grand" style="font-weight:700; margin-top:10px;">મહિનાનું કુલ ઉત્પાદન: ${fmt(grandTotal)} મીટર &nbsp;·&nbsp; કુલ પગાર: ₹${fmt(grandTotal*rate)}</p>`;
     return html;
   } else {
     const machines = Array.from(new Set(entries.map(o=>o.machine))).sort(naturalCompare);
-    let grandTotal = 0;
+    let grandMts = 0, grandWage = 0;
     const rows = machines.map(m=>{
+      const rate = rates[m] || 0;
       const mEntries = entries.filter(o=>o.machine===m);
       const half1 = mEntries.filter(o=>dayOfMonth(o.date)<=15).reduce((s,o)=>s+o.mts,0);
       const half2 = mEntries.filter(o=>dayOfMonth(o.date)>15).reduce((s,o)=>s+o.mts,0);
-      grandTotal += half1+half2;
-      return `<tr><td><b>${esc(m)}</b></td><td class="num">${fmt(half1)}</td><td class="num">${fmt(half2)}</td><td class="num">${fmt(half1+half2)}</td></tr>`;
+      const total = half1+half2;
+      const wage = total*rate;
+      grandMts += total; grandWage += wage;
+      const rateCell = printMode
+        ? `₹${fmt(rate)}`
+        : `<input type="number" step="0.01" min="0" style="width:90px;" value="${rate||''}" placeholder="0" onchange="updateMachineRate('${escAttr(m)}', this.value)">`;
+      return `<tr>
+        <td><b>${esc(m)}</b></td>
+        <td class="num">${rateCell}</td>
+        <td class="num">${fmt(half1)}</td>
+        <td class="num">${fmt(half2)}</td>
+        <td class="num">${fmt(total)}</td>
+        <td class="num">₹${fmt(wage)}</td>
+      </tr>`;
     }).join('');
     let html = `<div class="table-wrap"><table>
-      <tr><th>Machine</th><th class="num">1-15</th><th class="num">16-${totalDays}</th><th class="num">કુલ (મહિનો)</th></tr>${rows}</table></div>`;
-    html += `<p style="font-weight:700; margin-top:10px;">બધા મશીનનું કુલ ઉત્પાદન: ${fmt(grandTotal)} મીટર</p>`;
+      <tr><th>Machine</th><th class="num">રેટ (₹/મીટર)</th><th class="num">1-15</th><th class="num">16-${totalDays}</th><th class="num">કુલ મીટર</th><th class="num">પગાર (₹)</th></tr>${rows}</table></div>`;
+    html += `<p class="grand" style="font-weight:700; margin-top:10px;">બધા મશીનનું કુલ ઉત્પાદન: ${fmt(grandMts)} મીટર &nbsp;·&nbsp; કુલ પગાર: ₹${fmt(grandWage)}</p>`;
     return html;
   }
+}
+
+async function updateMachineRate(machine, value){
+  rates[machine] = parseFloat(value) || 0;
+  await saveAll();
+  refreshAll();
+}
+
+function printProductionReport(){
+  const monthVal = document.getElementById('prod_month').value || currentMonthVal();
+  const machineFilter = document.getElementById('prod_machine').value;
+  const box = document.getElementById('printArea');
+  const title = machineFilter ? `Machine ${esc(machineFilter)} — પ્રોડક્શન અને પગાર રિપોર્ટ` : 'બધા મશીન — પ્રોડક્શન અને પગાર રિપોર્ટ';
+  box.innerHTML = `
+    <h1>લૂમ બીમ મેનેજર</h1>
+    <p>${title} &nbsp;·&nbsp; મહિનો: <b>${monthVal}</b></p>
+    ${productionReportHTML(monthVal, machineFilter, {printMode:true, hideTitle:true})}
+  `;
+  setTimeout(()=>window.print(), 100);
+}
+
+// ---------- Wages (પગાર) tab ----------
+function populateWageMachinePickers(){
+  const list = machineList();
+  const wSel = document.getElementById('w_machine');
+  if(wSel){
+    const cur = wSel.value;
+    wSel.innerHTML = `<option value="">-- પસંદ કરો --</option>` + list.map(m=>`<option value="${esc(m)}">${esc(m)}</option>`).join('');
+    if(list.includes(cur)) wSel.value = cur;
+  }
+  const wageSel = document.getElementById('wage_machine');
+  if(wageSel){
+    const cur2 = wageSel.value;
+    wageSel.innerHTML = `<option value="">-- બધા મશીન --</option>` + list.map(m=>`<option value="${esc(m)}">${esc(m)}</option>`).join('');
+    if(list.includes(cur2)) wageSel.value = cur2;
+  }
+}
+
+function onWageMachinePick(){
+  const m = document.getElementById('w_machine').value;
+  const hint = document.getElementById('w_hint');
+  const rateEl = document.getElementById('w_rate');
+  if(!hint) return;
+  if(!m){ hint.textContent=''; if(rateEl) rateEl.value=''; return; }
+  const active = activeBeamsForMachine(m);
+  hint.textContent = active.length===0
+    ? '⚠ આ મશીન પર કોઈ ચાલુ બીમ નથી — પહેલા "બીમ એન્ટ્રી" (F1) માં બીમ ઉમેરો.'
+    : `ચાલુ ક્વોલિટી: ${esc(active[0].quality)||'—'} · બાકી મીટર: ${fmt(active[0].remainingMts)}`;
+  if(rateEl) rateEl.value = rates[m] || '';
+}
+document.getElementById('w_machine').addEventListener('change', onWageMachinePick);
+
+async function onWageRateChange(){
+  const m = document.getElementById('w_machine').value;
+  if(!m){ toast('પહેલા Machine No. પસંદ કરો'); document.getElementById('w_rate').value=''; return; }
+  await updateMachineRate(m, document.getElementById('w_rate').value);
+}
+
+async function submitWageEntry(){
+  const machine = document.getElementById('w_machine').value;
+  const mts = document.getElementById('w_mts').value;
+  const date = document.getElementById('w_date').value || todayStr();
+  const note = document.getElementById('w_note').value.trim();
+  if(!machine){ toast('Machine No. પસંદ કરો'); return; }
+  const active = activeBeamsForMachine(machine);
+  if(active.length===0){ toast('આ મશીન પર ચાલુ બીમ નથી'); return; }
+  if(!mts || parseFloat(mts)<=0){ toast('માન્ય મીટર દાખલ કરો'); return; }
+  const res = await addOut({machine, mts, taka:'', date, note});
+  if(!res.ok){ toast(res.msg); return; }
+  toast(`✅ ${fmt(mts)} મીટર નોંધાયા — Machine ${machine}`);
+  document.getElementById('w_mts').value='';
+  document.getElementById('w_note').value='';
+  document.getElementById('w_date').value = todayStr();
+  refreshAll();
+  document.getElementById('w_mts').focus();
+}
+
+function renderWageRecent(){
+  const tbl = document.getElementById('wageRecentTable');
+  if(!tbl) return;
+  const list = [...outs].sort((a,b)=>b.id.localeCompare(a.id)).slice(0,15);
+  if(list.length===0){ tbl.innerHTML = emptyRow(6,'હજુ કોઈ એન્ટ્રી નથી'); return; }
+  tbl.innerHTML = `<tr><th>તારીખ</th><th>Machine</th><th>ક્વોલિટી</th><th class="num">મીટર</th><th>નોંધ</th><th></th></tr>` +
+    list.map(o=>`<tr>
+      <td>${fmtDate(o.date)}</td><td><b>${esc(o.machine)}</b></td><td class="muted">${esc(o.quality)||'—'}</td>
+      <td class="num">${fmt(o.mts)}</td><td class="muted">${esc(o.note)||'—'}</td>
+      <td class="row-actions">
+        <button class="btn edit" onclick="editOut('${o.id}')">એડિટ</button>
+        <button class="btn danger" onclick="deleteOut('${o.id}')">ડિલીટ</button>
+      </td>
+    </tr>`).join('');
+}
+
+function renderWageRecentEntries(){
+  const tbl = document.getElementById('wageRecentTable');
+  if(!tbl) return;
+  const list = [...outs].sort((a,b)=>b.id.localeCompare(a.id)).slice(0,15);
+  if(list.length===0){ tbl.innerHTML = emptyRow(6,'હજુ કોઈ એન્ટ્રી નથી'); return; }
+  tbl.innerHTML = `<tr><th>તારીખ</th><th>Machine</th><th>ક્વોલિટી</th><th class="num">મીટર</th><th>નોંધ</th><th></th></tr>` +
+    list.map(o=>`<tr>
+      <td>${fmtDate(o.date)}</td><td><b>${esc(o.machine)}</b></td>
+      <td class="muted">${esc(o.quality)||'—'}</td>
+      <td class="num">${fmt(o.mts)}</td><td class="muted">${esc(o.note)||'—'}</td>
+      <td class="row-actions">
+        <button class="btn edit" onclick="editOut('${o.id}')">એડિટ</button>
+        <button class="btn danger" onclick="deleteOut('${o.id}')">ડિલીટ</button>
+      </td>
+    </tr>`).join('');
+}
+
+function renderWageReport(){
+  const box = document.getElementById('wageReportResult');
+  if(!box) return;
+  const monthEl = document.getElementById('wage_month');
+  if(monthEl && !monthEl.value) monthEl.value = currentMonthVal();
+  const monthVal = monthEl ? monthEl.value : currentMonthVal();
+  const machineFilter = document.getElementById('wage_machine').value;
+  box.innerHTML = productionReportHTML(monthVal, machineFilter, {hideTitle:!machineFilter});
+}
+document.getElementById('wage_machine').addEventListener('change', renderWageReport);
+document.getElementById('wage_month').addEventListener('change', renderWageReport);
+
+function printWageReport(){
+  const monthVal = document.getElementById('wage_month').value || currentMonthVal();
+  const machineFilter = document.getElementById('wage_machine').value;
+  const box = document.getElementById('printArea');
+  const title = machineFilter ? `Machine ${esc(machineFilter)} — પગાર રિપોર્ટ` : 'બધા મશીન — પગાર રિપોર્ટ';
+  box.innerHTML = `
+    <h1>લૂમ બીમ મેનેજર</h1>
+    <p>${title} &nbsp;·&nbsp; મહિનો: <b>${monthVal}</b></p>
+    ${productionReportHTML(monthVal, machineFilter, {printMode:true, hideTitle:true})}
+  `;
+  setTimeout(()=>window.print(), 100);
 }
 
 function currentMonthVal(){
@@ -1363,6 +1609,17 @@ function renderDashboardProduction(){
   box.innerHTML = productionReportHTML(monthVal, '', {hideTitle:true});
 }
 document.getElementById('dash_prod_month').addEventListener('change', renderDashboardProduction);
+
+function printDashboardProduction(){
+  const monthVal = document.getElementById('dash_prod_month').value || currentMonthVal();
+  const box = document.getElementById('printArea');
+  box.innerHTML = `
+    <h1>લૂમ બીમ મેનેજર</h1>
+    <p>બધા મશીન — પ્રોડક્શન અને પગાર રિપોર્ટ &nbsp;·&nbsp; મહિનો: <b>${monthVal}</b></p>
+    ${productionReportHTML(monthVal, '', {printMode:true, hideTitle:true})}
+  `;
+  setTimeout(()=>window.print(), 100);
+}
 document.getElementById('prod_machine').addEventListener('change', renderProductionReport);
 document.getElementById('prod_month').addEventListener('change', renderProductionReport);
 
@@ -1620,6 +1877,9 @@ function refreshAll(){
   renderStockTable();
   populateProdMachinePicker();
   renderProductionReport();
+  populateWageMachinePickers();
+  renderWageReport();
+  renderWageRecent();
   renderRecentDispatch();
   renderPendingDispatch();
   renderTakaHistory();
@@ -1637,6 +1897,10 @@ attachEnterNav(
 attachEnterNav(
   ['o_machine','o_mts','o_taka','o_date','o_note'],
   submitOut
+);
+attachEnterNav(
+  ['w_machine','w_mts','w_rate','w_date','w_note'],
+  submitWageEntry
 );
 // (ડિસ્પેચ ફોર્મ માટે Enter handling d_taka/d_quality/d_mts પર અલગથી, ઉપર addTakaToPending() સાથે લાગેલું છે)
 
