@@ -549,6 +549,7 @@
           <option value="">-- બધા મશીન --</option>
         </select>
         <input type="text" id="h_search" placeholder="Beam No. / Name / ક્વોલિટી શોધો..." oninput="renderHistory()">
+        <button class="btn edit" onclick="printHistory()">🖨 પ્રિન્ટ / PDF</button>
       </div>
       <div class="table-wrap"><table id="historyTable"></table></div>
     </div>
@@ -1170,6 +1171,9 @@ async function submitBeam(){
 
   if(!from || !machine || !beamNo || !taar || !mts){
     toast('બધી જરૂરી વિગત ભરો'); return;
+  }
+  if(parseFloat(mts) <= 0){
+    toast('⚠ તાકા/MRT મીટર 0 કરતાં વધારે હોવું જોઈએ'); return;
   }
   const closeBeamIds = Array.from(document.querySelectorAll('.closeBeamCheck:checked')).map(cb=>cb.value);
   await addBeam({from, machine, beamNo, taar, mts, date, note, quality, pic}, closeBeamIds);
@@ -2115,7 +2119,7 @@ function populateHistoryMachinePicker(){
   if(list.includes(cur)) sel.value = cur;
 }
 
-function renderHistory(){
+function getFilteredHistoryRows(){
   const type = document.getElementById('h_type').value;
   const machineFilter = document.getElementById('h_machine').value;
   const q = document.getElementById('h_search').value.trim().toLowerCase();
@@ -2153,7 +2157,11 @@ function renderHistory(){
       }
     });
   }
+  return rows;
+}
 
+function renderHistory(){
+  const rows = getFilteredHistoryRows();
   const tbl = document.getElementById('historyTable');
   if(rows.length===0){ tbl.innerHTML = emptyRow(7,'કોઈ રેકોર્ડ મળ્યો નથી'); return; }
 
@@ -2213,6 +2221,68 @@ function renderHistory(){
 }
 document.getElementById('h_type').addEventListener('change', renderHistory);
 document.getElementById('h_machine').addEventListener('change', renderHistory);
+
+// Prints/PDFs exactly what's currently filtered on screen (type + machine +
+// search box) — same rows, same order, just without the edit/delete buttons,
+// plus a small totals line for whichever entry types are included.
+function printHistory(){
+  const rows = getFilteredHistoryRows();
+  if(rows.length===0){ toast('પ્રિન્ટ કરવા માટે કોઈ રેકોર્ડ નથી'); return; }
+
+  const typeLabel = {all:'બધું', beam:'બીમ એન્ટ્રી', out:'આઉટ કાપડ એન્ટ્રી', wage:'પગાર એન્ટ્રી', dispatch:'ડિસ્પેચ / વેચાણ'}[document.getElementById('h_type').value] || 'બધું';
+  const machineFilter = document.getElementById('h_machine').value;
+  const q = document.getElementById('h_search').value.trim();
+
+  const totals = {out:0, wage:0, dispatch:0};
+  rows.forEach(r=>{ if(totals[r.kind]!==undefined) totals[r.kind] += (r.obj.mts||0); });
+
+  const rowsHtml = rows.map(r=>{
+    if(r.kind==='beam'){
+      const b = r.obj;
+      return `<tr><td>બીમ</td><td>${fmtDate(b.date)}</td><td>${esc(b.machine)}</td><td>${esc(b.beamNo)}</td>
+        <td>From: ${esc(b.from)} · તાર: ${esc(b.taar)}${b.quality?' · ક્વોલિટી: '+esc(b.quality):''}${b.pic?' · PIC: '+esc(b.pic):''}</td>
+        <td class="num">${fmt(b.remainingMts)}/${fmt(b.totalMts)}</td></tr>`;
+    } else if(r.kind==='out'){
+      const o = r.obj;
+      const beamNames = (o.beams||[]).map(x=>x.beamNo).join(', ')||'—';
+      return `<tr><td>આઉટ</td><td>${fmtDate(o.date)}</td><td>${esc(o.machine)}</td><td>${esc(beamNames)}</td>
+        <td>${o.taka?('તાકા: '+esc(o.taka)+' · '):''}${o.quality?('ક્વોલિટી: '+esc(o.quality)+' · '):''}${esc(o.note)||'—'}</td>
+        <td class="num">${fmt(o.mts)}</td></tr>`;
+    } else if(r.kind==='wage'){
+      const o = r.obj;
+      return `<tr><td>પગાર</td><td>${fmtDate(o.date)}</td><td>${esc(o.machine)}</td><td>—</td>
+        <td>${o.worker?('કારીગર: '+esc(o.worker)+' · '):''}${esc(o.note)||'—'}</td>
+        <td class="num">${fmt(o.mts)}</td></tr>`;
+    } else {
+      const d = r.obj;
+      return `<tr><td>ડિસ્પેચ</td><td>${fmtDate(d.date)}</td><td>—</td><td>—</td>
+        <td>ક્વોલિટી: ${esc(d.quality)}${d.taka?(' · તાકા: '+esc(d.taka)):''}${d.note?(' · '+esc(d.note)):''}</td>
+        <td class="num">${fmt(d.mts)}</td></tr>`;
+    }
+  }).join('');
+
+  let filterLine = `પ્રકાર: ${esc(typeLabel)}`;
+  if(machineFilter) filterLine += ` &nbsp;·&nbsp; Machine: ${esc(machineFilter)}`;
+  if(q) filterLine += ` &nbsp;·&nbsp; શોધ: "${esc(q)}"`;
+
+  const totalsParts = [];
+  if(totals.out) totalsParts.push(`કુલ આઉટ મીટર: ${fmt(totals.out)}`);
+  if(totals.wage) totalsParts.push(`કુલ પગાર મીટર: ${fmt(totals.wage)}`);
+  if(totals.dispatch) totalsParts.push(`કુલ ડિસ્પેચ મીટર: ${fmt(totals.dispatch)}`);
+  const totalsLine = totalsParts.length ? `<p class="grand" style="font-weight:700; margin-top:10px;">${totalsParts.join(' &nbsp;·&nbsp; ')}</p>` : '';
+
+  const box = document.getElementById('printArea');
+  box.innerHTML = `
+    <h1>લૂમ બીમ મેનેજર</h1>
+    <p>હિસ્ટ્રી રિપોર્ટ &nbsp;·&nbsp; ${filterLine} &nbsp;·&nbsp; કુલ ${rows.length} રેકોર્ડ</p>
+    <div class="table-wrap"><table>
+      <tr><th>પ્રકાર</th><th>તારીખ</th><th>Machine</th><th>Beam No.</th><th>વિગત</th><th class="num">મીટર</th></tr>
+      ${rowsHtml}
+    </table></div>
+    ${totalsLine}
+  `;
+  setTimeout(()=>window.print(), 100);
+}
 
 // ---------- Import from old (localStorage) file ----------
 async function importOldData(){
