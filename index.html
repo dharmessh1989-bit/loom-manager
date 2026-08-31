@@ -836,7 +836,7 @@ async function addBeam(data, closeBeamIds){
   const beam = {
     id: uid(), seq,
     from: data.from, machine: data.machine, beamNo: data.beamNo,
-    taar: data.taar, quality: data.quality||'', pic: data.pic||'',
+    taar: data.taar, quality: canonicalizeQuality(data.quality), pic: data.pic||'',
     totalMts: parseFloat(data.mts), remainingMts: parseFloat(data.mts),
     date: data.date, note: data.note||'', status:'active'
   };
@@ -936,25 +936,49 @@ async function deleteOut(id){
 // Produced = sum of out-cloth entries for that quality.
 // Dispatched = sum of dispatch (sale/out-going) entries for that quality.
 // Stock = Produced - Dispatched.
+// Quality names are compared case/whitespace-insensitively everywhere below,
+// so "Mysor crep Paiping" and "Mysor crep paiping" are treated as the SAME
+// quality (just typed with different capitalization) instead of showing up
+// as two separate stock rows.
+function normQ(q){ return (q||'').trim().toLowerCase(); }
+
+// When saving a NEW quality value, reuse the exact casing already used
+// elsewhere for the same quality (if any), so new entries don't create yet
+// another near-duplicate spelling going forward.
+function canonicalizeQuality(q){
+  const trimmed = (q||'').trim();
+  if(!trimmed) return trimmed;
+  const key = normQ(trimmed);
+  const existing = qualityList().find(x => normQ(x)===key);
+  return existing || trimmed;
+}
+
 function qualityList(){
-  const set = new Set();
-  outs.forEach(o=>{ if(o.quality) set.add(o.quality); });
-  dispatches.forEach(d=>{ if(d.quality) set.add(d.quality); });
-  beams.forEach(b=>{ if(b.quality) set.add(b.quality); });
-  return Array.from(set).sort((a,b)=>a.localeCompare(b));
+  const map = new Map(); // normalized key -> display casing actually used
+  function add(q){
+    if(!q) return;
+    const key = normQ(q);
+    if(key && !map.has(key)) map.set(key, q.trim());
+  }
+  outs.forEach(o=>add(o.quality));
+  dispatches.forEach(d=>add(d.quality));
+  beams.forEach(b=>add(b.quality));
+  return Array.from(map.values()).sort((a,b)=>a.localeCompare(b));
 }
 function producedForQuality(q){
-  return outs.filter(o=>o.quality===q).reduce((s,o)=>s+o.mts,0);
+  const key = normQ(q);
+  return outs.filter(o=>normQ(o.quality)===key).reduce((s,o)=>s+o.mts,0);
 }
 function dispatchedForQuality(q){
-  return dispatches.filter(d=>d.quality===q).reduce((s,d)=>s+d.mts,0);
+  const key = normQ(q);
+  return dispatches.filter(d=>normQ(d.quality)===key).reduce((s,d)=>s+d.mts,0);
 }
 function stockForQuality(q){
   return Math.round((producedForQuality(q) - dispatchedForQuality(q))*100)/100;
 }
 
 async function addDispatch(data){
-  const quality = (data.quality||'').trim();
+  const quality = canonicalizeQuality(data.quality);
   const mts = parseFloat(data.mts);
   if(!quality) return {ok:false, msg:'ક્વોલિટી લખો.'};
   if(!mts || mts<=0) return {ok:false, msg:'માન્ય મીટર દાખલ કરો.'};
@@ -1022,7 +1046,7 @@ function editBeam(id){
     b.machine = document.getElementById('em_machine').value.trim();
     b.beamNo = document.getElementById('em_beamno').value.trim();
     b.taar = document.getElementById('em_taar').value.trim();
-    b.quality = document.getElementById('em_quality').value.trim();
+    b.quality = canonicalizeQuality(document.getElementById('em_quality').value);
     b.pic = document.getElementById('em_pic').value.trim();
     b.totalMts = newTotal;
     b.remainingMts = Math.max(0, Math.round((b.remainingMts + delta)*100)/100);
@@ -1065,7 +1089,7 @@ function editOut(id){
     });
     o.mts = newMts;
     o.taka = document.getElementById('em_out_taka').value.trim();
-    o.quality = document.getElementById('em_out_quality').value.trim();
+    o.quality = canonicalizeQuality(document.getElementById('em_out_quality').value);
     o.date = document.getElementById('em_out_date').value || o.date;
     o.note = document.getElementById('em_out_note').value.trim();
     saveAll().then(()=>{
@@ -1117,7 +1141,7 @@ function editDispatch(id){
       <div class="field" style="grid-column:1/-1;"><label>નોંધ</label><input id="em_d_note" value="${escAttr(d.note)}"></div>
     </div>`;
   openModal(`ડિસ્પેચ એન્ટ્રી એડિટ કરો`, body, ()=>{
-    d.quality = document.getElementById('em_d_quality').value.trim();
+    d.quality = canonicalizeQuality(document.getElementById('em_d_quality').value);
     d.taka = document.getElementById('em_d_taka').value.trim();
     d.mts = parseFloat(document.getElementById('em_d_mts').value)||0;
     d.date = document.getElementById('em_d_date').value || d.date;
@@ -1373,7 +1397,7 @@ function addTakaToPending(){
     if(!confirm(`⚠ તાકા નંબર "${taka}" પહેલેથી મોકલાયેલ (dispatch) છે. છતાં આગળ વધવું છે?`)) return;
   }
   const match = lookupOutByTaka(taka);
-  const quality = match ? (match.quality||'') : document.getElementById('d_quality').value.trim();
+  const quality = canonicalizeQuality(match ? (match.quality||'') : document.getElementById('d_quality').value);
   const mts = match ? match.mts : (parseFloat(document.getElementById('d_mts').value)||0);
   if(!quality){
     toast('⚠ ક્વોલિટી મળી નહીં — જાતે ક્વોલિટી લખીને ફરી "+ લિસ્ટમાં ઉમેરો" દબાવો');
