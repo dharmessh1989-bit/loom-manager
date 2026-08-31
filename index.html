@@ -174,6 +174,7 @@
   }
   .sync-dot{ width:7px; height:7px; border-radius:50%; background:#7ee0a8; box-shadow:0 0 0 3px rgba(126,224,168,.2); }
   .sync-dot.busy{ background:#e8c26a; }
+  .sync-dot.error{ background:#e05a5a; box-shadow:0 0 0 3px rgba(224,90,90,.25); }
   @media(max-width:640px){ .sync-badge{ position:static; margin-top:6px; justify-content:flex-start; } }
   #printArea{ display:none; }
   @media print{
@@ -309,6 +310,13 @@
 
     <div class="card">
       <h2>તાજેતરના બીમ</h2>
+      <p class="hint" style="margin-top:-6px;">"બધા મશીન" પસંદ કરેલું હોય ત્યારે ફક્ત છેલ્લા 15 બીમ (ગમે તે મશીનના) દેખાય છે. કોઈ ચોક્કસ મશીન પસંદ કરો તો એ મશીનના બધા જ બીમ (જૂના-નવા બધા) દેખાશે.</p>
+      <div class="form-grid" style="margin-bottom:10px;">
+        <div class="field">
+          <label>Machine No. પ્રમાણે જુઓ</label>
+          <select id="rb_machine_filter" onchange="renderRecentBeams()"><option value="">-- બધા મશીન (છેલ્લા 15) --</option></select>
+        </div>
+      </div>
       <div class="table-wrap"><table id="recentBeamsTable"></table></div>
     </div>
   </section>
@@ -420,7 +428,7 @@
       </div>
       <button class="btn thread" id="pendingDispatchSaveBtn" onclick="saveAllPendingDispatch()">+ બધા તાકા સેવ કરો (0)</button>
     </div>
-    <p class="hint" style="text-align:center; margin-top:-10px;">શોર્ટકટ: <b>F1</b> = બીમ એન્ટ્રી &nbsp;·&nbsp; <b>F2</b> = આઉટ કાપડ એન્ટ્રી &nbsp;·&nbsp; <b>F3</b> = માલ મોકલ્યો (આ પેજ). દરેક ફોર્મમાં Enter દબાવવાથી પછીના બોક્સમાં કર્સર જાય છે.</p>
+    <p class="hint" style="text-align:center; margin-top:-10px;">શોર્ટકટ: <b>F1</b> = બીમ એન્ટ્રી &nbsp;·&nbsp; <b>F2</b> = આઉટ કાપડ એન્ટ્રી &nbsp;·&nbsp; <b>F3</b> = માલ મોકલ્યો (આ પેજ) &nbsp;·&nbsp; <b>F4</b> = પગાર એન્ટ્રી &nbsp;·&nbsp; <b>F5</b> = પ્રોડક્શન રિપોર્ટ &nbsp;·&nbsp; <b>F6</b> = હિસ્ટ્રી. દરેક ફોર્મમાં Enter દબાવવાથી પછીના બોક્સમાં કર્સર જાય છે — છેલ્લા બોક્સમાં Enter દબાવવાથી એન્ટ્રી સેવ થઈ જાય છે, mouse ની જરૂર નથી.</p>
 
     <div class="card">
       <h2>તાજેતરની ડિસ્પેચ એન્ટ્રી</h2>
@@ -582,9 +590,10 @@ function setSyncStatus(state){
   const dot = document.getElementById('syncDot');
   const txt = document.getElementById('syncText');
   if(!dot) return;
+  dot.classList.remove('busy','error');
   if(state==='busy'){ dot.classList.add('busy'); txt.textContent = 'સેવ થઈ રહ્યું છે...'; }
-  else if(state==='error'){ dot.classList.add('busy'); txt.textContent = 'સેવ નિષ્ફળ - ઈન્ટરનેટ ચેક કરો'; }
-  else { dot.classList.remove('busy'); txt.textContent = 'સિંક થયેલ'; }
+  else if(state==='error'){ dot.classList.add('error'); txt.textContent = '⚠ સેવ નિષ્ફળ — ફરી પ્રયત્ન થઈ રહ્યો છે...'; }
+  else { txt.textContent = 'સિંક થયેલ'; }
 }
 
 function snapshotJSON(){
@@ -594,6 +603,7 @@ function snapshotJSON(){
 async function loadAllData(){
   try{
     const res = await fetch(FIREBASE_URL, {cache:'no-store'});
+    if(!res.ok) throw new Error('HTTP ' + res.status);
     const parsed = (await res.json()) || {};
     beams = parsed.beams || [];
     outs = parsed.outs || [];
@@ -601,7 +611,12 @@ async function loadAllData(){
     rates = parsed.rates || {};
     wageEntries = parsed.wageEntries || [];
   }catch(e){
-    beams = []; outs = []; dispatches = []; rates = {}; wageEntries = [];
+    // Important: on failure we must NOT fall through to an empty dataset —
+    // doing so would let the app think there's simply "no data yet", and the
+    // very next save would overwrite whatever real data is on the server
+    // with this empty state. The caller checks the return value and refuses
+    // to proceed until a load actually succeeds.
+    return false;
   }
   // Migrate older out-entries (single beamId/beamNo) to the new multi-beam schema
   let migrated = false;
@@ -623,26 +638,53 @@ async function loadAllData(){
   });
   lastSavedJSON = snapshotJSON();
   if(migrated) await saveAll();
+  return true;
 }
+
+let saveInFlight = false;
+let saveRetryTimer = null;
+let hasSaveError = false;
 
 async function saveAll(){
   setSyncStatus('busy');
+  saveInFlight = true;
   try{
     const json = snapshotJSON();
-    await fetch(FIREBASE_URL, {method:'PUT', headers:{'Content-Type':'application/json'}, body: json});
+    const res = await fetch(FIREBASE_URL, {method:'PUT', headers:{'Content-Type':'application/json'}, body: json});
+    // fetch() only rejects on a network failure — a rejected/blocked write
+    // (e.g. permission denied, bad request) still returns a normal response,
+    // so it must be checked explicitly or a failed save would look "✅ saved".
+    if(!res.ok){
+      throw new Error('HTTP ' + res.status);
+    }
     lastSavedJSON = json;
+    if(hasSaveError){ toast('✅ ડેટા હવે સેવ થઈ ગયો'); }
+    hasSaveError = false;
+    if(saveRetryTimer){ clearTimeout(saveRetryTimer); saveRetryTimer = null; }
     setSyncStatus('ok');
   }catch(e){
+    hasSaveError = true;
     setSyncStatus('error');
-    toast('⚠ સેવ કરવામાં તકલીફ — ઈન્ટરનેટ ચેક કરો');
+    toast('⚠ સેવ કરવામાં તકલીફ — ફરી પ્રયત્ન થઈ રહ્યો છે, ઈન્ટરનેટ ચેક કરો');
+    // Keep retrying quietly in the background so an entry never gets lost.
+    // While hasSaveError is true, pollForRemoteChanges() below refuses to
+    // overwrite local data with the server's (older) copy.
+    if(saveRetryTimer) clearTimeout(saveRetryTimer);
+    saveRetryTimer = setTimeout(()=>saveAll(), 5000);
+  }finally{
+    saveInFlight = false;
   }
 }
 
 // Poll periodically + on tab focus so changes made from another PC/mobile show up here too.
 async function pollForRemoteChanges(){
   if(!dataReady) return;
+  // Never let a stale server copy clobber local changes that are still being
+  // saved or are waiting on a retry — that would silently discard them.
+  if(saveInFlight || hasSaveError) return;
   try{
     const res = await fetch(FIREBASE_URL, {cache:'no-store'});
+    if(!res.ok) return;
     const parsed = await res.json();
     if(parsed){
       const json = JSON.stringify(parsed);
@@ -680,6 +722,19 @@ function toast(msg){
 }
 
 // ---------- Navigation ----------
+// Every view has a designated "first field" so that switching to it —
+// whether by mouse click on a nav button or by F-key — puts the cursor
+// straight into the box that's needed first. This is what lets the whole
+// app be run with only the keyboard.
+const VIEW_FIRST_FIELD = {
+  beamEntry: 'f_from',
+  outEntry: 'o_machine',
+  stock: 'd_taka',
+  wages: 'w_machine',
+  production: 'prod_machine',
+  history: 'h_search'
+};
+
 function switchView(viewName){
   const btn = document.querySelector(`nav button[data-view="${viewName}"]`);
   if(!btn) return;
@@ -688,25 +743,35 @@ function switchView(viewName){
   btn.classList.add('active');
   document.getElementById(viewName).classList.add('active');
   refreshAll();
+  const firstFieldId = VIEW_FIRST_FIELD[viewName];
+  if(firstFieldId){
+    setTimeout(()=>{ const el=document.getElementById(firstFieldId); if(el) el.focus(); }, 0);
+  }
 }
 document.querySelectorAll('nav button').forEach(btn=>{
   btn.addEventListener('click', ()=> switchView(btn.dataset.view));
 });
 
-// F1 = બીમ એન્ટ્રી, F2 = આઉટ કાપડ એન્ટ્રી, F3 = સ્ટોક/માલ મોકલ્યો (ડિસ્પેચ)
+// F1 = બીમ એન્ટ્રી, F2 = આઉટ કાપડ એન્ટ્રી, F3 = સ્ટોક/માલ મોકલ્યો (ડિસ્પેચ),
+// F4 = પગાર એન્ટ્રી, F5 = પ્રોડક્શન રિપોર્ટ, F6 = હિસ્ટ્રી — mouse વગર જ પેજ બદલાય
+// અને એ પેજની પહેલી બોક્સમાં કર્સર સીધો જતો રહે.
+const VIEW_SHORTCUT_KEYS = {F1:'beamEntry', F2:'outEntry', F3:'stock', F4:'wages', F5:'production', F6:'history'};
 document.addEventListener('keydown', (e)=>{
-  if(e.key==='F1'){
+  if(VIEW_SHORTCUT_KEYS[e.key]){
     e.preventDefault();
-    switchView('beamEntry');
-    setTimeout(()=>{ const el=document.getElementById('f_from'); if(el) el.focus(); }, 0);
-  } else if(e.key==='F2'){
+    switchView(VIEW_SHORTCUT_KEYS[e.key]);
+  } else if(e.key==='Escape'){
+    const modal = document.getElementById('editModal');
+    if(modal && modal.style.display!=='none'){ e.preventDefault(); closeEditModal(); }
+  }
+});
+
+// Enter-to-save inside the edit modal — press Enter in any field to save,
+// same as clicking "સેવ કરો", so the modal never needs a mouse click either.
+document.getElementById('editModalBody').addEventListener('keydown', (e)=>{
+  if(e.key==='Enter'){
     e.preventDefault();
-    switchView('outEntry');
-    setTimeout(()=>{ const el=document.getElementById('o_machine'); if(el) el.focus(); }, 0);
-  } else if(e.key==='F3'){
-    e.preventDefault();
-    switchView('stock');
-    setTimeout(()=>{ const el=document.getElementById('d_taka'); if(el) el.focus(); }, 0);
+    document.getElementById('editModalSave').click();
   }
 });
 
@@ -818,8 +883,13 @@ async function addOut(data){
 async function addWageEntry(data){
   const mts = parseFloat(data.mts);
   if(!mts || mts<=0) return {ok:false, msg:'માન્ય મીટર દાખલ કરો.'};
+  // The rate is "frozen" onto the entry at the moment it's saved. This way,
+  // if the machine's rate is changed later, past wage entries keep showing
+  // the wage that was actually calculated/paid at the time — only new
+  // entries use the new rate.
+  const rate = data.rate!==undefined && data.rate!==null && data.rate!=='' ? parseFloat(data.rate)||0 : (rates[data.machine]||0);
   const entry = {
-    id: uid(), machine: data.machine, mts,
+    id: uid(), machine: data.machine, mts, rate,
     worker: (data.worker||'').trim(), date: data.date, note: data.note||''
   };
   wageEntries.push(entry);
@@ -913,6 +983,12 @@ function openModal(title, bodyHtml, onSave){
   document.getElementById('editModal').style.display = 'flex';
   const saveBtn = document.getElementById('editModalSave');
   saveBtn.onclick = onSave;
+  // Auto-focus the first field so editing can continue with just the keyboard —
+  // no mouse click needed to get into the modal's first box.
+  setTimeout(()=>{
+    const firstInput = document.querySelector('#editModalBody input, #editModalBody select');
+    if(firstInput) firstInput.focus();
+  }, 0);
 }
 function closeEditModal(){
   document.getElementById('editModal').style.display = 'none';
@@ -1003,18 +1079,21 @@ function editOut(id){
 function editWageEntry(id){
   const o = wageEntries.find(x=>x.id===id);
   if(!o) return;
+  const currentRate = (o.rate!=null && o.rate!=='') ? o.rate : (rates[o.machine]||0);
   const body = `
     <div class="form-grid" style="grid-template-columns:1fr 1fr;">
       <div class="field"><label>Machine No.</label><input id="em_w_machine" value="${escAttr(o.machine)}"></div>
       <div class="field"><label>મીટર</label><input id="em_w_mts" type="number" step="0.01" value="${o.mts}"></div>
+      <div class="field"><label>રેટ (₹ પ્રતિ મીટર)</label><input id="em_w_rate" type="number" step="0.01" min="0" value="${currentRate}"></div>
       <div class="field"><label>કારીગરનું નામ</label><input id="em_w_worker" list="workerNamesList" value="${escAttr(o.worker)}"></div>
       <div class="field"><label>તારીખ</label><input id="em_w_date" type="date" value="${o.date}"></div>
       <div class="field" style="grid-column:1/-1;"><label>નોંધ</label><input id="em_w_note" value="${escAttr(o.note)}"></div>
     </div>
-    <p class="hint">આ એન્ટ્રી ફક્ત પગાર ગણવા માટે છે — તેનાથી બીમ કે સ્ટોકને અસર થતી નથી.</p>`;
+    <p class="hint">આ એન્ટ્રી ફક્ત પગાર ગણવા માટે છે — તેનાથી બીમ કે સ્ટોકને અસર થતી નથી. અહીંનો રેટ ફક્ત આ એન્ટ્રી માટે જ છે, મશીનનો રેટ બદલાશે નહીં.</p>`;
   openModal(`પગાર એન્ટ્રી એડિટ કરો`, body, ()=>{
     o.machine = document.getElementById('em_w_machine').value.trim();
     o.mts = parseFloat(document.getElementById('em_w_mts').value)||0;
+    o.rate = parseFloat(document.getElementById('em_w_rate').value)||0;
     o.worker = document.getElementById('em_w_worker').value.trim();
     o.date = document.getElementById('em_w_date').value || o.date;
     o.note = document.getElementById('em_w_note').value.trim();
@@ -1097,9 +1176,25 @@ function renderExistingBeamsForNewEntry(){
 }
 document.getElementById('f_machine').addEventListener('input', renderExistingBeamsForNewEntry);
 
+function populateRecentBeamsMachineFilter(){
+  const sel = document.getElementById('rb_machine_filter');
+  if(!sel) return;
+  const cur = sel.value;
+  const list = machineList();
+  sel.innerHTML = `<option value="">-- બધા મશીન (છેલ્લા 15) --</option>` + list.map(m=>`<option value="${esc(m)}">${esc(m)}</option>`).join('');
+  if(list.includes(cur)) sel.value = cur;
+}
+
 function renderRecentBeams(){
   const tbl = document.getElementById('recentBeamsTable');
-  const list = [...beams].sort((a,b)=>b.seq-a.seq).slice(0,15);
+  const filterEl = document.getElementById('rb_machine_filter');
+  const machineFilter = filterEl ? filterEl.value : '';
+  let list;
+  if(machineFilter){
+    list = beamsForMachine(machineFilter).slice().sort((a,b)=>b.seq-a.seq); // this machine's full history
+  } else {
+    list = [...beams].sort((a,b)=>b.seq-a.seq).slice(0,15); // last 15 across all machines
+  }
   if(list.length===0){ tbl.innerHTML = emptyRow(9,'હજુ કોઈ બીમ ઉમેરાયો નથી'); return; }
   tbl.innerHTML = `<tr><th>તારીખ</th><th>Machine</th><th>Beam No.</th><th>તાર</th><th>ક્વોલિટી</th><th>PIC</th><th class="num">બાકી / કુલ મીટર</th><th>સ્ટેટસ</th><th></th></tr>` +
     list.map(b=>`<tr>
@@ -1215,6 +1310,9 @@ async function submitOut(){
   const active = activeBeamsForMachine(machine);
   if(active.length===0){ toast('આ મશીન પર ચાલુ બીમ નથી'); return; }
   if(!mts || parseFloat(mts)<=0){ toast('માન્ય મીટર દાખલ કરો'); return; }
+  if(taka && outs.some(o => (o.taka||'').trim().toLowerCase() === taka.toLowerCase())){
+    if(!confirm(`⚠ તાકા નંબર "${taka}" પહેલેથી વપરાયેલ છે. છતાં આગળ વધવું છે?`)) return;
+  }
   const res = await addOut({machine, mts, taka, date, note});
   if(!res.ok){ toast(res.msg); return; }
   toast(`✅ ${fmt(mts)} મીટર નોંધાયા — ${res.beams.length} બીમમાંથી ઓછા થયા — સ્ટોકમાં ઉમેરાયા`);
@@ -1271,6 +1369,9 @@ function addTakaToPending(){
     toast('⚠ આ તાકા પહેલેથી લિસ્ટમાં છે');
     return;
   }
+  if(dispatches.some(d => (d.taka||'').trim().toLowerCase() === taka.toLowerCase())){
+    if(!confirm(`⚠ તાકા નંબર "${taka}" પહેલેથી મોકલાયેલ (dispatch) છે. છતાં આગળ વધવું છે?`)) return;
+  }
   const match = lookupOutByTaka(taka);
   const quality = match ? (match.quality||'') : document.getElementById('d_quality').value.trim();
   const mts = match ? match.mts : (parseFloat(document.getElementById('d_mts').value)||0);
@@ -1322,6 +1423,12 @@ function renderPendingDispatch(){
 ['d_taka','d_quality','d_mts'].forEach(id=>{
   document.getElementById(id).addEventListener('keydown', (e)=>{
     if(e.key==='Enter'){ e.preventDefault(); addTakaToPending(); }
+  });
+});
+// તારીખ / નોંધ બોક્સમાં Enter દબાવવાથી સીધું બધા તાકા સેવ થાય (mouse ની જરૂર ના પડે)
+['d_date','d_note'].forEach(id=>{
+  document.getElementById(id).addEventListener('keydown', (e)=>{
+    if(e.key==='Enter'){ e.preventDefault(); saveAllPendingDispatch(); }
   });
 });
 
@@ -1547,38 +1654,23 @@ function productionReportHTML(monthVal, machineFilter, opts){
   }
 }
 
-// Groups a set of wage entries by the karigar name recorded on each entry
-// and totals their meters/wage at the given rate.
-function renderWorkerBreakdown(entries, rate){
+// Groups a set of wage entries by the karigar name recorded on each entry.
+// Each entry's own snapshotted rate is used (falling back to the machine's
+// current rate only for older entries saved before rates were snapshotted),
+// so this stays correct even across a rate change mid-month or per machine.
+function renderWorkerBreakdown(entries, titleSuffix){
   const withWorker = entries.filter(o=>o.worker);
   if(withWorker.length===0) return '';
   const byWorker = {};
   withWorker.forEach(o=>{
-    byWorker[o.worker] = (byWorker[o.worker]||0) + o.mts;
-  });
-  const names = Object.keys(byWorker).sort((a,b)=>byWorker[b]-byWorker[a]);
-  return `<div class="table-wrap"><table>
-    <tr><th colspan="3">કારીગર પ્રમાણે પગાર</th></tr>
-    <tr><th>કારીગર</th><th class="num">મીટર</th><th class="num">પગાર (₹)</th></tr>` +
-    names.map(n=>`<tr><td>${esc(n)}</td><td class="num">${fmt(byWorker[n])}</td><td class="num">₹${fmt(byWorker[n]*rate)}</td></tr>`).join('') +
-    `</table></div>`;
-}
-
-// Same idea as renderWorkerBreakdown but for the "all machines" view, where
-// each entry may belong to a different machine with a different rate.
-function renderWorkerBreakdownMultiRate(entries){
-  const withWorker = entries.filter(o=>o.worker);
-  if(withWorker.length===0) return '';
-  const byWorker = {};
-  withWorker.forEach(o=>{
-    const rate = rates[o.machine] || 0;
+    const r = (o.rate!=null && o.rate!=='') ? o.rate : (rates[o.machine]||0);
     if(!byWorker[o.worker]) byWorker[o.worker] = {mts:0, wage:0};
     byWorker[o.worker].mts += o.mts;
-    byWorker[o.worker].wage += o.mts*rate;
+    byWorker[o.worker].wage += o.mts*r;
   });
   const names = Object.keys(byWorker).sort((a,b)=>byWorker[b].mts-byWorker[a].mts);
   return `<div class="table-wrap"><table>
-    <tr><th colspan="3">કારીગર પ્રમાણે પગાર (બધા મશીન)</th></tr>
+    <tr><th colspan="3">કારીગર પ્રમાણે પગાર${titleSuffix?(' '+titleSuffix):''}</th></tr>
     <tr><th>કારીગર</th><th class="num">મીટર</th><th class="num">પગાર (₹)</th></tr>` +
     names.map(n=>`<tr><td>${esc(n)}</td><td class="num">${fmt(byWorker[n].mts)}</td><td class="num">₹${fmt(byWorker[n].wage)}</td></tr>`).join('') +
     `</table></div>`;
@@ -1653,12 +1745,13 @@ async function onWageRateChange(){
 async function submitWageEntry(){
   const machine = document.getElementById('w_machine').value;
   const mts = document.getElementById('w_mts').value;
+  const rate = document.getElementById('w_rate').value;
   const worker = document.getElementById('w_worker').value.trim();
   const date = document.getElementById('w_date').value || todayStr();
   const note = document.getElementById('w_note').value.trim();
   if(!machine){ toast('Machine No. પસંદ કરો'); return; }
   if(!mts || parseFloat(mts)<=0){ toast('માન્ય મીટર દાખલ કરો'); return; }
-  const res = await addWageEntry({machine, mts, date, note, worker});
+  const res = await addWageEntry({machine, mts, date, note, worker, rate});
   if(!res.ok){ toast(res.msg); return; }
   toast(`✅ ${fmt(mts)} મીટર નોંધાયા — Machine ${machine}${worker?' · '+worker:''}`);
   document.getElementById('w_mts').value='';
@@ -1701,7 +1794,8 @@ function wageReportHTML(monthVal, machineFilter, opts){
   }
 
   if(machineFilter){
-    const rate = rates[machineFilter] || 0;
+    const rate = rates[machineFilter] || 0; // current/default rate — used only for the editor box + as a fallback for old entries
+    const entryRate = o => (o.rate!=null && o.rate!=='') ? o.rate : rate;
     const byDate = {};
     entries.forEach(o=>{ byDate[o.date] = (byDate[o.date]||0) + o.mts; });
     const dates = Object.keys(byDate).sort();
@@ -1710,35 +1804,42 @@ function wageReportHTML(monthVal, machineFilter, opts){
     const half1Mts = half1.reduce((s,d)=>s+byDate[d],0);
     const half2Mts = half2.reduce((s,d)=>s+byDate[d],0);
     const grandTotal = half1Mts + half2Mts;
+    const half1Wage = entries.filter(o=>dayOfMonth(o.date)<=15).reduce((s,o)=>s+o.mts*entryRate(o),0);
+    const half2Wage = entries.filter(o=>dayOfMonth(o.date)>15).reduce((s,o)=>s+o.mts*entryRate(o),0);
+    const grandWage = half1Wage + half2Wage;
 
     let html = opts.hideTitle ? '' : `<h3 style="margin-top:16px;">Machine ${esc(machineFilter)} — ${monthVal}</h3>`;
 
     if(printMode){
-      html += `<p>રેટ: <b>₹${fmt(rate)}</b> પ્રતિ મીટર</p>`;
+      html += `<p>હાલનો રેટ: <b>₹${fmt(rate)}</b> પ્રતિ મીટર (નવી એન્ટ્રી માટે)</p>`;
     } else {
-      html += `<div class="field" style="max-width:220px; margin:8px 0 14px;">
-        <label>રેટ (₹ પ્રતિ મીટર)</label>
+      html += `<div class="field" style="max-width:220px; margin:8px 0 4px;">
+        <label>રેટ (₹ પ્રતિ મીટર) — નવી એન્ટ્રી માટે</label>
         <input type="number" step="0.01" min="0" value="${rate||''}" placeholder="દા.ત. 5" onchange="updateMachineRate('${escAttr(machineFilter)}', this.value)">
-      </div>`;
+      </div>
+      <p class="hint" style="margin:0 0 10px;">રેટ બદલવાથી ફક્ત હવે પછીની એન્ટ્રીઓ પર અસર થશે — જૂની એન્ટ્રીઓનો પગાર એ સમયના રેટ મુજબ જ રહેશે.</p>`;
     }
 
     html += renderProdHalfTable('1 થી 15', half1, byDate);
-    html += `<p>1-15 પગાર: <b>₹${fmt(half1Mts*rate)}</b></p>`;
+    html += `<p>1-15 પગાર: <b>₹${fmt(half1Wage)}</b></p>`;
     html += renderProdHalfTable(`16 થી ${totalDays}`, half2, byDate);
-    html += `<p>16-${totalDays} પગાર: <b>₹${fmt(half2Mts*rate)}</b></p>`;
-    html += `<p class="grand" style="font-weight:700; margin-top:10px;">મહિનાનું કુલ: ${fmt(grandTotal)} મીટર &nbsp;·&nbsp; કુલ પગાર: ₹${fmt(grandTotal*rate)}</p>`;
-    html += renderWorkerBreakdown(entries, rate);
+    html += `<p>16-${totalDays} પગાર: <b>₹${fmt(half2Wage)}</b></p>`;
+    html += `<p class="grand" style="font-weight:700; margin-top:10px;">મહિનાનું કુલ: ${fmt(grandTotal)} મીટર &nbsp;·&nbsp; કુલ પગાર: ₹${fmt(grandWage)}</p>`;
+    html += renderWorkerBreakdown(entries);
     return html;
   } else {
     const machines = Array.from(new Set(entries.map(o=>o.machine))).sort(naturalCompare);
     let grandMts = 0, grandWage = 0;
     const rows = machines.map(m=>{
       const rate = rates[m] || 0;
+      const entryRate = o => (o.rate!=null && o.rate!=='') ? o.rate : rate;
       const mEntries = entries.filter(o=>o.machine===m);
-      const half1 = mEntries.filter(o=>dayOfMonth(o.date)<=15).reduce((s,o)=>s+o.mts,0);
-      const half2 = mEntries.filter(o=>dayOfMonth(o.date)>15).reduce((s,o)=>s+o.mts,0);
+      const half1Entries = mEntries.filter(o=>dayOfMonth(o.date)<=15);
+      const half2Entries = mEntries.filter(o=>dayOfMonth(o.date)>15);
+      const half1 = half1Entries.reduce((s,o)=>s+o.mts,0);
+      const half2 = half2Entries.reduce((s,o)=>s+o.mts,0);
       const total = half1+half2;
-      const wage = total*rate;
+      const wage = half1Entries.reduce((s,o)=>s+o.mts*entryRate(o),0) + half2Entries.reduce((s,o)=>s+o.mts*entryRate(o),0);
       grandMts += total; grandWage += wage;
       const rateCell = printMode
         ? `₹${fmt(rate)}`
@@ -1755,7 +1856,7 @@ function wageReportHTML(monthVal, machineFilter, opts){
     let html = `<div class="table-wrap"><table>
       <tr><th>Machine</th><th class="num">રેટ (₹/મીટર)</th><th class="num">1-15</th><th class="num">16-${totalDays}</th><th class="num">કુલ મીટર</th><th class="num">પગાર (₹)</th></tr>${rows}</table></div>`;
     html += `<p class="grand" style="font-weight:700; margin-top:10px;">બધા મશીનનું કુલ: ${fmt(grandMts)} મીટર &nbsp;·&nbsp; કુલ પગાર: ₹${fmt(grandWage)}</p>`;
-    html += renderWorkerBreakdownMultiRate(entries);
+    html += renderWorkerBreakdown(entries, '(બધા મશીન)');
     return html;
   }
 }
@@ -1792,15 +1893,18 @@ function karigarHistoryHTML(name){
   const machines = Array.from(new Set(entries.map(o=>o.machine))).sort(naturalCompare);
   let grandMts = 0, grandWage = 0;
   const rows = machines.map(m=>{
-    const rate = rates[m] || 0;
-    const total = entries.filter(o=>o.machine===m).reduce((s,o)=>s+o.mts,0);
-    const wage = total*rate;
+    const currentRate = rates[m] || 0;
+    const mEntries = entries.filter(o=>o.machine===m);
+    const total = mEntries.reduce((s,o)=>s+o.mts,0);
+    // Wage uses each entry's own snapshotted rate (falls back to the
+    // machine's current rate only for older entries saved before this).
+    const wage = mEntries.reduce((s,o)=>s + o.mts*((o.rate!=null && o.rate!=='') ? o.rate : currentRate), 0);
     grandMts += total; grandWage += wage;
-    return `<tr><td><b>${esc(m)}</b></td><td class="num">${fmt(total)}</td><td class="num">₹${fmt(rate)}</td><td class="num">₹${fmt(wage)}</td></tr>`;
+    return `<tr><td><b>${esc(m)}</b></td><td class="num">${fmt(total)}</td><td class="num">₹${fmt(currentRate)}</td><td class="num">₹${fmt(wage)}</td></tr>`;
   }).join('');
   let html = `<div class="table-wrap"><table>
     <tr><th colspan="4">મશીન પ્રમાણે કુલ કામ — ${esc(name)}</th></tr>
-    <tr><th>Machine</th><th class="num">કુલ મીટર</th><th class="num">રેટ (₹/મીટર)</th><th class="num">પગાર (₹)</th></tr>
+    <tr><th>Machine</th><th class="num">કુલ મીટર</th><th class="num">હાલનો રેટ (₹/મીટર)</th><th class="num">પગાર (₹)</th></tr>
     ${rows}
   </table></div>`;
   html += `<p class="grand" style="font-weight:700; margin-top:10px;">કુલ મીટર: ${fmt(grandMts)} &nbsp;·&nbsp; કુલ પગાર: ₹${fmt(grandWage)}</p>`;
@@ -2136,6 +2240,7 @@ function refreshAll(){
   renderDashboard();
   renderDashboardProduction();
   renderMachineLookup();
+  populateRecentBeamsMachineFilter();
   renderRecentBeams();
   renderMachinesTable();
   populateMachinePicker();
@@ -2174,7 +2279,15 @@ attachEnterNav(
 // (ડિસ્પેચ ફોર્મ માટે Enter handling d_taka/d_quality/d_mts પર અલગથી, ઉપર addTakaToPending() સાથે લાગેલું છે)
 
 (async function start(){
-  await loadAllData();
+  const ok = await loadAllData();
+  if(!ok){
+    document.getElementById('loadingOverlay').innerHTML = `
+      <p style="color:#e05a5a; font-weight:600;">⚠ ડેટા લોડ થઈ શક્યો નહીં — ઈન્ટરનેટ ચેક કરો</p>
+      <p style="max-width:280px; text-align:center;">સેફ્ટી માટે એપ ખાલી ડેટા સાથે શરૂ નથી થતી, જેથી ભૂલથી સર્વર પરનો સાચો ડેટા ભૂંસાય નહીં.</p>
+      <button class="btn thread" onclick="location.reload()">🔄 ફરી પ્રયત્ન કરો</button>
+    `;
+    return;
+  }
   dataReady = true;
   refreshAll();
   document.getElementById('loadingOverlay').style.display = 'none';
