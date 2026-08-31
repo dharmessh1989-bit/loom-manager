@@ -1334,8 +1334,12 @@ async function submitOut(){
   const active = activeBeamsForMachine(machine);
   if(active.length===0){ toast('આ મશીન પર ચાલુ બીમ નથી'); return; }
   if(!mts || parseFloat(mts)<=0){ toast('માન્ય મીટર દાખલ કરો'); return; }
-  if(taka && outs.some(o => (o.taka||'').trim().toLowerCase() === taka.toLowerCase())){
-    if(!confirm(`⚠ તાકા નંબર "${taka}" પહેલેથી વપરાયેલ છે. છતાં આગળ વધવું છે?`)) return;
+  if(taka){
+    const dupOut = outs.find(o => (o.taka||'').trim().toLowerCase() === taka.toLowerCase());
+    if(dupOut){
+      const msg = `⚠ તાકા નંબર "${taka}" પહેલેથી વપરાયેલ છે —\nMachine: ${dupOut.machine} · ક્વોલિટી: ${dupOut.quality||'—'} · મીટર: ${fmt(dupOut.mts)} · તારીખ: ${fmtDate(dupOut.date)}\n\nછતાં આગળ વધવું છે?`;
+      if(!confirm(msg)) return;
+    }
   }
   const res = await addOut({machine, mts, taka, date, note});
   if(!res.ok){ toast(res.msg); return; }
@@ -1394,7 +1398,9 @@ function addTakaToPending(){
     return;
   }
   if(dispatches.some(d => (d.taka||'').trim().toLowerCase() === taka.toLowerCase())){
-    if(!confirm(`⚠ તાકા નંબર "${taka}" પહેલેથી મોકલાયેલ (dispatch) છે. છતાં આગળ વધવું છે?`)) return;
+    const dupD = dispatches.find(d => (d.taka||'').trim().toLowerCase() === taka.toLowerCase());
+    const msg = `⚠ તાકા નંબર "${taka}" પહેલેથી મોકલાયેલ (dispatch) છે —\nક્વોલિટી: ${dupD.quality||'—'} · મીટર: ${fmt(dupD.mts)} · તારીખ: ${fmtDate(dupD.date)}\n\nછતાં આગળ વધવું છે?`;
+    if(!confirm(msg)) return;
   }
   const match = lookupOutByTaka(taka);
   const quality = canonicalizeQuality(match ? (match.quality||'') : document.getElementById('d_quality').value);
