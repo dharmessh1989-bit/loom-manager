@@ -336,16 +336,16 @@
       <h2>આઉટ કાપડ એન્ટ્રી</h2>
       <div class="form-grid">
         <div class="field">
+          <label>તાકા નંબર (Taka No.)</label>
+          <input type="text" id="o_taka" placeholder="દા.ત. T-45">
+        </div>
+        <div class="field">
           <label>Machine No. પસંદ કરો</label>
           <select id="o_machine" class="machine-picker" onchange="onMachinePick()"></select>
         </div>
         <div class="field">
           <label>આઉટ મીટર (Out Mts)</label>
           <input type="number" id="o_mts" min="0" step="0.01" placeholder="દા.ત. 120">
-        </div>
-        <div class="field">
-          <label>તાકા નંબર (Taka No.)</label>
-          <input type="text" id="o_taka" placeholder="દા.ત. T-45">
         </div>
         <div class="field">
           <label>તારીખ</label>
@@ -637,6 +637,12 @@ async function loadAllData(){
       migrated = true;
     }
   });
+  // Assign a running serial number (સીરીયલ નં.) to any out-entries saved
+  // before this feature existed, in their original entry order (by id).
+  if(outs.some(o=>!o.seq)){
+    [...outs].sort((a,b)=>a.id.localeCompare(b.id)).forEach((o,i)=>{ if(!o.seq) o.seq = i+1; });
+    migrated = true;
+  }
   lastSavedJSON = snapshotJSON();
   if(migrated) await saveAll();
   return true;
@@ -729,7 +735,7 @@ function toast(msg){
 // app be run with only the keyboard.
 const VIEW_FIRST_FIELD = {
   beamEntry: 'f_from',
-  outEntry: 'o_machine',
+  outEntry: 'o_taka',
   stock: 'd_taka',
   wages: 'w_machine',
   production: 'prod_machine',
@@ -862,8 +868,9 @@ async function addOut(data){
   const mts = parseFloat(data.mts);
   if(!mts || mts<=0) return {ok:false, msg:'માન્ય મીટર દાખલ કરો.'};
   const qualities = Array.from(new Set(active.map(b=>b.quality).filter(Boolean)));
+  const seq = outs.length ? Math.max(...outs.map(o=>o.seq||0))+1 : 1;
   const entry = {
-    id: uid(), machine: data.machine,
+    id: uid(), seq, machine: data.machine,
     beams: active.map(b=>({beamId:b.id, beamNo:b.beamNo})),
     mts, taka: data.taka||'', date: data.date, note: data.note||'',
     quality: qualities[0] || ''
@@ -986,7 +993,7 @@ async function addDispatch(data){
   const available = stockForQuality(quality);
   if(mts > available) return {ok:false, msg:`⚠ સ્ટોકમાં ફક્ત ${fmt(available)} મીટર જ છે, ${fmt(mts)} નહીં.`};
   const entry = {
-    id: uid(), quality, mts, taka: data.taka||'', date: data.date, note: data.note||''
+    id: uid(), quality, mts, taka: data.taka||'', machine: data.machine||'', date: data.date, note: data.note||''
   };
   dispatches.push(entry);
   await saveAll();
@@ -1135,6 +1142,7 @@ function editDispatch(id){
   if(!d) return;
   const body = `
     <div class="form-grid" style="grid-template-columns:1fr 1fr;">
+      <div class="field"><label>Machine No.</label><input id="em_d_machine" value="${escAttr(dispatchMachine(d))}"></div>
       <div class="field"><label>ક્વોલિટી</label><input id="em_d_quality" value="${escAttr(d.quality)}"></div>
       <div class="field"><label>તાકા નંબર</label><input id="em_d_taka" value="${escAttr(d.taka)}"></div>
       <div class="field"><label>મોકલેલા મીટર</label><input id="em_d_mts" type="number" step="0.01" value="${d.mts}"></div>
@@ -1142,6 +1150,7 @@ function editDispatch(id){
       <div class="field" style="grid-column:1/-1;"><label>નોંધ</label><input id="em_d_note" value="${escAttr(d.note)}"></div>
     </div>`;
   openModal(`ડિસ્પેચ એન્ટ્રી એડિટ કરો`, body, ()=>{
+    d.machine = document.getElementById('em_d_machine').value.trim();
     d.quality = canonicalizeQuality(document.getElementById('em_d_quality').value);
     d.taka = document.getElementById('em_d_taka').value.trim();
     d.mts = parseFloat(document.getElementById('em_d_mts').value)||0;
@@ -1381,6 +1390,16 @@ function lookupOutByTaka(taka){
   if(!t) return null;
   return outs.find(o => (o.taka||'').trim().toLowerCase() === t) || null;
 }
+
+// Returns the machine number for a dispatch entry — uses the machine stored
+// on the entry itself (snapshotted at dispatch time), falling back to a
+// taka-number lookup against out-entries for older dispatches saved before
+// this was tracked.
+function dispatchMachine(d){
+  if(d.machine) return d.machine;
+  const match = lookupOutByTaka(d.taka);
+  return match ? (match.machine||'') : '';
+}
 document.getElementById('d_taka').addEventListener('blur', ()=>{
   const taka = document.getElementById('d_taka').value;
   const match = lookupOutByTaka(taka);
@@ -1409,6 +1428,7 @@ function addTakaToPending(){
   const match = lookupOutByTaka(taka);
   const quality = canonicalizeQuality(match ? (match.quality||'') : document.getElementById('d_quality').value);
   const mts = match ? match.mts : (parseFloat(document.getElementById('d_mts').value)||0);
+  const machine = match ? (match.machine||'') : '';
   if(!quality){
     toast('⚠ ક્વોલિટી મળી નહીં — જાતે ક્વોલિટી લખીને ફરી "+ લિસ્ટમાં ઉમેરો" દબાવો');
     document.getElementById('d_quality').focus();
@@ -1419,7 +1439,7 @@ function addTakaToPending(){
     document.getElementById('d_mts').focus();
     return;
   }
-  pendingDispatch.push({taka, quality, mts});
+  pendingDispatch.push({taka, quality, mts, machine});
   renderPendingDispatch();
   document.getElementById('d_taka').value='';
   document.getElementById('d_quality').value='';
@@ -1438,11 +1458,12 @@ function renderPendingDispatch(){
   const totalEl = document.getElementById('pendingDispatchTotal');
   const saveBtn = document.getElementById('pendingDispatchSaveBtn');
   if(pendingDispatch.length===0){
-    tbl.innerHTML = emptyRow(4, 'હજુ કોઈ તાકા ઉમેર્યા નથી — તાકા નંબર લખી Enter દબાવો');
+    tbl.innerHTML = emptyRow(5, 'હજુ કોઈ તાકા ઉમેર્યા નથી — તાકા નંબર લખી Enter દબાવો');
   } else {
-    tbl.innerHTML = `<tr><th>તાકા નં.</th><th>ક્વોલિટી</th><th class="num">મીટર</th><th></th></tr>` +
+    tbl.innerHTML = `<tr><th>તાકા નં.</th><th>Machine</th><th>ક્વોલિટી</th><th class="num">મીટર</th><th></th></tr>` +
       pendingDispatch.map((p,i)=>`<tr>
         <td><b>${esc(p.taka)}</b></td>
+        <td>${esc(p.machine)||'—'}</td>
         <td>${esc(p.quality)}</td>
         <td class="num">${fmt(p.mts)}</td>
         <td class="row-actions"><button class="btn danger" onclick="removeFromPending(${i})">✕ કાઢો</button></td>
@@ -1483,7 +1504,7 @@ async function saveAllPendingDispatch(){
   }
 
   pendingDispatch.forEach(p=>{
-    dispatches.push({id: uid(), quality:p.quality, mts:p.mts, taka:p.taka, date, note});
+    dispatches.push({id: uid(), quality:p.quality, mts:p.mts, taka:p.taka, machine:p.machine||'', date, note});
   });
   await saveAll();
   toast(`✅ ${pendingDispatch.length} તાકા સેવ થયા`);
@@ -1642,15 +1663,6 @@ function productionReportHTML(monthVal, machineFilter, opts){
 
     let html = opts.hideTitle ? '' : `<h3 style="margin-top:16px;">Machine ${esc(machineFilter)} — ${monthVal}</h3>`;
 
-    if(printMode){
-      html += `<p>રેટ: <b>₹${fmt(rate)}</b> પ્રતિ મીટર</p>`;
-    } else {
-      html += `<div class="field" style="max-width:220px; margin:8px 0 14px;">
-        <label>રેટ (₹ પ્રતિ મીટર)</label>
-        <input type="number" step="0.01" min="0" value="${rate||''}" placeholder="દા.ત. 5" onchange="updateMachineRate('${escAttr(machineFilter)}', this.value)">
-      </div>`;
-    }
-
     html += renderProdHalfTable('1 થી 15', half1, byDate);
     html += `<p>1-15 પગાર: <b>₹${fmt(half1Mts*rate)}</b></p>`;
     html += renderProdHalfTable(`16 થી ${totalDays}`, half2, byDate);
@@ -1669,12 +1681,8 @@ function productionReportHTML(monthVal, machineFilter, opts){
       const total = half1+half2;
       const wage = total*rate;
       grandMts += total; grandWage += wage;
-      const rateCell = printMode
-        ? `₹${fmt(rate)}`
-        : `<input type="number" step="0.01" min="0" style="width:90px;" value="${rate||''}" placeholder="0" onchange="updateMachineRate('${escAttr(m)}', this.value)">`;
       return `<tr>
         <td><b>${esc(m)}</b></td>
-        <td class="num">${rateCell}</td>
         <td class="num">${fmt(half1)}</td>
         <td class="num">${fmt(half2)}</td>
         <td class="num">${fmt(total)}</td>
@@ -1682,7 +1690,7 @@ function productionReportHTML(monthVal, machineFilter, opts){
       </tr>`;
     }).join('');
     let html = `<div class="table-wrap"><table>
-      <tr><th>Machine</th><th class="num">રેટ (₹/મીટર)</th><th class="num">1-15</th><th class="num">16-${totalDays}</th><th class="num">કુલ મીટર</th><th class="num">પગાર (₹)</th></tr>${rows}</table></div>`;
+      <tr><th>Machine</th><th class="num">1-15</th><th class="num">16-${totalDays}</th><th class="num">કુલ મીટર</th><th class="num">પગાર (₹)</th></tr>${rows}</table></div>`;
     html += `<p class="grand" style="font-weight:700; margin-top:10px;">બધા મશીનનું કુલ ઉત્પાદન: ${fmt(grandMts)} મીટર &nbsp;·&nbsp; કુલ પગાર: ₹${fmt(grandWage)}</p>`;
     return html;
   }
@@ -1860,6 +1868,7 @@ function wageReportHTML(monthVal, machineFilter, opts){
     html += `<p>16-${totalDays} પગાર: <b>₹${fmt(half2Wage)}</b></p>`;
     html += `<p class="grand" style="font-weight:700; margin-top:10px;">મહિનાનું કુલ: ${fmt(grandTotal)} મીટર &nbsp;·&nbsp; કુલ પગાર: ₹${fmt(grandWage)}</p>`;
     html += renderWorkerBreakdown(entries);
+    if(printMode) html += renderMachineKarigarBox(machineFilter, entries);
     return html;
   } else {
     const machines = Array.from(new Set(entries.map(o=>o.machine))).sort(naturalCompare);
@@ -1891,8 +1900,35 @@ function wageReportHTML(monthVal, machineFilter, opts){
       <tr><th>Machine</th><th class="num">રેટ (₹/મીટર)</th><th class="num">1-15</th><th class="num">16-${totalDays}</th><th class="num">કુલ મીટર</th><th class="num">પગાર (₹)</th></tr>${rows}</table></div>`;
     html += `<p class="grand" style="font-weight:700; margin-top:10px;">બધા મશીનનું કુલ: ${fmt(grandMts)} મીટર &nbsp;·&nbsp; કુલ પગાર: ₹${fmt(grandWage)}</p>`;
     html += renderWorkerBreakdown(entries, '(બધા મશીન)');
+    if(printMode){
+      machines.forEach(m=>{ html += renderMachineKarigarBox(m, entries); });
+    }
     return html;
   }
+}
+
+// For print/PDF only: one box per machine, listing which karigar worked how
+// many meters on which date for that machine — a physical-register-style
+// breakdown, separate from the totals-only tables shown above it.
+function renderMachineKarigarBox(machine, monthEntries){
+  const mEntries = monthEntries.filter(o=>o.machine===machine).slice().sort((a,b)=>(a.date||'').localeCompare(b.date||''));
+  if(mEntries.length===0) return '';
+  const totalMts = mEntries.reduce((s,o)=>s+o.mts,0);
+  // Wage uses each entry's own snapshotted rate (falls back to the machine's
+  // current rate only for older entries saved before rates were snapshotted).
+  const totalWage = mEntries.reduce((s,o)=>{
+    const r = (o.rate!=null && o.rate!=='') ? o.rate : (rates[machine]||0);
+    return s + o.mts*r;
+  }, 0);
+  const rows = mEntries.map((o,i)=>`<tr><td>${i+1}</td><td>${fmtDate(o.date)}</td><td>${esc(o.worker)||'—'}</td><td class="num">${fmt(o.mts)}</td></tr>`).join('');
+  return `<div class="table-wrap" style="margin-top:16px; border:1px solid #999; padding:8px;">
+    <h3 style="margin:0 0 6px;">Machine ${esc(machine)}</h3>
+    <table>
+      <tr><th>ક્રમ</th><th>તારીખ</th><th>કારીગર</th><th class="num">મીટર</th></tr>
+      ${rows}
+    </table>
+    <p style="font-weight:700; margin-top:6px;">Machine ${esc(machine)} કુલ: ${fmt(totalMts)} મીટર &nbsp;·&nbsp; પગાર: ₹${fmt(totalWage)}</p>
+  </div>`;
 }
 
 function renderWageReport(){
@@ -1943,11 +1979,11 @@ function karigarHistoryHTML(name){
   </table></div>`;
   html += `<p class="grand" style="font-weight:700; margin-top:10px;">કુલ મીટર: ${fmt(grandMts)} &nbsp;·&nbsp; કુલ પગાર: ₹${fmt(grandWage)}</p>`;
 
-  const sortedEntries = [...entries].sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+  const sortedEntries = [...entries].sort((a,b)=>(a.date||'').localeCompare(b.date||''));
   html += `<div class="table-wrap" style="margin-top:14px;"><table>
-    <tr><th colspan="4">દરેક દિવસની વિગત</th></tr>
-    <tr><th>તારીખ</th><th>Machine</th><th class="num">મીટર</th><th>નોંધ</th></tr>` +
-    sortedEntries.map(o=>`<tr><td>${fmtDate(o.date)}</td><td><b>${esc(o.machine)}</b></td><td class="num">${fmt(o.mts)}</td><td class="muted">${esc(o.note)||'—'}</td></tr>`).join('') +
+    <tr><th colspan="5">દરેક દિવસની વિગત (તારીખ પ્રમાણે)</th></tr>
+    <tr><th>ક્રમ</th><th>તારીખ</th><th>Machine</th><th class="num">મીટર</th><th>નોંધ</th></tr>` +
+    sortedEntries.map((o,i)=>`<tr><td>${i+1}</td><td>${fmtDate(o.date)}</td><td><b>${esc(o.machine)}</b></td><td class="num">${fmt(o.mts)}</td><td class="muted">${esc(o.note)||'—'}</td></tr>`).join('') +
     `</table></div>`;
   return html;
 }
@@ -2038,10 +2074,10 @@ function renderStockTable(){
 function renderRecentDispatch(){
   const tbl = document.getElementById('recentDispatchTable');
   const list = [...dispatches].sort((a,b)=>b.id.localeCompare(a.id)).slice(0,15);
-  if(list.length===0){ tbl.innerHTML = emptyRow(6,'હજુ કોઈ ડિસ્પેચ એન્ટ્રી નથી'); return; }
-  tbl.innerHTML = `<tr><th>તારીખ</th><th>ક્વોલિટી</th><th>તાકા નં.</th><th class="num">મીટર</th><th>નોંધ</th><th></th></tr>` +
+  if(list.length===0){ tbl.innerHTML = emptyRow(7,'હજુ કોઈ ડિસ્પેચ એન્ટ્રી નથી'); return; }
+  tbl.innerHTML = `<tr><th>તારીખ</th><th>Machine</th><th>ક્વોલિટી</th><th>તાકા નં.</th><th class="num">મીટર</th><th>નોંધ</th><th></th></tr>` +
     list.map(d=>`<tr>
-      <td>${fmtDate(d.date)}</td><td><b>${esc(d.quality)}</b></td><td>${esc(d.taka)||'—'}</td>
+      <td>${fmtDate(d.date)}</td><td>${esc(dispatchMachine(d))||'—'}</td><td><b>${esc(d.quality)}</b></td><td>${esc(d.taka)||'—'}</td>
       <td class="num">${fmt(d.mts)}</td><td class="muted">${esc(d.note)||'—'}</td>
       <td class="row-actions">
         <button class="btn edit" onclick="editDispatch('${d.id}')">એડિટ</button>
@@ -2053,12 +2089,14 @@ function renderRecentDispatch(){
 function renderRecentOut(){
   const tbl = document.getElementById('recentOutTable');
   const list = [...outs].sort((a,b)=>b.id.localeCompare(a.id)).slice(0,15);
-  if(list.length===0){ tbl.innerHTML = emptyRow(8,'હજુ કોઈ આઉટ એન્ટ્રી નથી'); return; }
-  tbl.innerHTML = `<tr><th>તારીખ</th><th>Machine</th><th>તાકા નં.</th><th>અસર થયેલા બીમ</th><th>ક્વોલિટી</th><th class="num">આઉટ મીટર</th><th>નોંધ</th><th></th></tr>` +
+  if(list.length===0){ tbl.innerHTML = emptyRow(9,'હજુ કોઈ આઉટ એન્ટ્રી નથી'); return; }
+  tbl.innerHTML = `<tr><th>સીરીયલ નં.</th><th>તારીખ</th><th>Machine</th><th class="num">મીટર</th><th>તાકા નં.</th><th>અસર થયેલા બીમ</th><th>ક્વોલિટી</th><th>નોંધ</th><th></th></tr>` +
     list.map(o=>`<tr>
-      <td>${fmtDate(o.date)}</td><td><b>${esc(o.machine)}</b></td><td>${esc(o.taka)||'—'}</td><td>${esc((o.beams||[]).map(x=>x.beamNo).join(', ')||'—')}</td>
-      <td class="muted">${esc(o.quality)||'—'}</td>
-      <td class="num">${fmt(o.mts)}</td><td class="muted">${esc(o.note)||'—'}</td>
+      <td>${o.seq||'—'}</td>
+      <td>${fmtDate(o.date)}</td><td><b>${esc(o.machine)}</b></td>
+      <td class="num">${fmt(o.mts)}</td>
+      <td>${esc(o.taka)||'—'}</td><td>${esc((o.beams||[]).map(x=>x.beamNo).join(', ')||'—')}</td>
+      <td class="muted">${esc(o.quality)||'—'}</td><td class="muted">${esc(o.note)||'—'}</td>
       <td class="row-actions">
         <button class="btn edit" onclick="editOut('${o.id}')">એડિટ</button>
         <button class="btn danger" onclick="deleteOut('${o.id}')">ડિલીટ</button>
@@ -2165,7 +2203,7 @@ function renderHistory(){
   const tbl = document.getElementById('historyTable');
   if(rows.length===0){ tbl.innerHTML = emptyRow(7,'કોઈ રેકોર્ડ મળ્યો નથી'); return; }
 
-  tbl.innerHTML = `<tr><th>પ્રકાર</th><th>તારીખ</th><th>Machine</th><th>Beam No.</th><th>વિગત</th><th class="num">મીટર</th><th></th></tr>` +
+  tbl.innerHTML = `<tr><th>પ્રકાર</th><th>તારીખ</th><th>Machine</th><th>તાકા નં.</th><th>વિગત</th><th class="num">મીટર</th><th></th></tr>` +
     rows.map(r=>{
       if(r.kind==='beam'){
         const b = r.obj;
@@ -2206,10 +2244,11 @@ function renderHistory(){
         </tr>`;
       } else {
         const d = r.obj;
+        const dMachine = dispatchMachine(d);
         return `<tr>
           <td><span class="tag ok">ડિસ્પેચ</span></td>
-          <td>${fmtDate(d.date)}</td><td class="muted">—</td><td class="muted">—</td>
-          <td class="muted">ક્વોલિટી: ${esc(d.quality)}${d.taka?(' · તાકા: '+esc(d.taka)):''}${d.note?(' · '+esc(d.note)):''}</td>
+          <td>${fmtDate(d.date)}</td><td><b>${esc(dMachine)||'—'}</b></td><td>${esc(d.taka)||'—'}</td>
+          <td class="muted">ક્વોલિટી: ${esc(d.quality)}${d.note?(' · '+esc(d.note)):''}</td>
           <td class="num">${fmt(d.mts)}</td>
           <td class="row-actions">
             <button class="btn edit" onclick="editDispatch('${d.id}')">એડિટ</button>
@@ -2255,8 +2294,9 @@ function printHistory(){
         <td class="num">${fmt(o.mts)}</td></tr>`;
     } else {
       const d = r.obj;
-      return `<tr><td>ડિસ્પેચ</td><td>${fmtDate(d.date)}</td><td>—</td><td>—</td>
-        <td>ક્વોલિટી: ${esc(d.quality)}${d.taka?(' · તાકા: '+esc(d.taka)):''}${d.note?(' · '+esc(d.note)):''}</td>
+      const dMachine = dispatchMachine(d);
+      return `<tr><td>ડિસ્પેચ</td><td>${fmtDate(d.date)}</td><td>${esc(dMachine)||'—'}</td><td>${esc(d.taka)||'—'}</td>
+        <td>ક્વોલિટી: ${esc(d.quality)}${d.note?(' · '+esc(d.note)):''}</td>
         <td class="num">${fmt(d.mts)}</td></tr>`;
     }
   }).join('');
@@ -2276,7 +2316,7 @@ function printHistory(){
     <h1>લૂમ બીમ મેનેજર</h1>
     <p>હિસ્ટ્રી રિપોર્ટ &nbsp;·&nbsp; ${filterLine} &nbsp;·&nbsp; કુલ ${rows.length} રેકોર્ડ</p>
     <div class="table-wrap"><table>
-      <tr><th>પ્રકાર</th><th>તારીખ</th><th>Machine</th><th>Beam No.</th><th>વિગત</th><th class="num">મીટર</th></tr>
+      <tr><th>પ્રકાર</th><th>તારીખ</th><th>Machine</th><th>તાકા નં.</th><th>વિગત</th><th class="num">મીટર</th></tr>
       ${rowsHtml}
     </table></div>
     ${totalsLine}
@@ -2369,7 +2409,7 @@ attachEnterNav(
   submitBeam
 );
 attachEnterNav(
-  ['o_machine','o_mts','o_taka','o_date','o_note'],
+  ['o_taka','o_machine','o_mts','o_date','o_note'],
   submitOut
 );
 attachEnterNav(
