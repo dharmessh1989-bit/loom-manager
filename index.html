@@ -1363,7 +1363,7 @@ async function submitOut(){
   document.getElementById('o_note').value='';
   document.getElementById('o_date').value = todayStr();
   refreshAll();
-  document.getElementById('o_machine').focus();
+  document.getElementById('o_taka').focus();
 }
 
 // ---------- Stock / Dispatch view ----------
@@ -1861,7 +1861,7 @@ async function submitWageEntry(){
   document.getElementById('w_date').value = todayStr();
   refreshAll();
   onWageMachinePick();
-  document.getElementById('w_mts').focus();
+  document.getElementById('w_machine').focus();
 }
 
 function renderWageRecent(){
