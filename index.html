@@ -469,17 +469,17 @@
           <select id="w_machine"><option value="">-- પસંદ કરો --</option></select>
         </div>
         <div class="field">
+          <label>કારીગરનું નામ</label>
+          <input type="text" id="w_worker" list="workerNamesList" placeholder="કારીગરનું નામ">
+          <datalist id="workerNamesList"></datalist>
+        </div>
+        <div class="field">
           <label>મીટર</label>
           <input type="number" id="w_mts" min="0" step="0.01" placeholder="દા.ત. 110">
         </div>
         <div class="field">
           <label>રેટ (₹ પ્રતિ મીટર)</label>
           <input type="number" id="w_rate" min="0" step="0.01" placeholder="દા.ત. 5" onchange="onWageRateChange()">
-        </div>
-        <div class="field">
-          <label>કારીગરનું નામ</label>
-          <input type="text" id="w_worker" list="workerNamesList" placeholder="કારીગરનું નામ">
-          <datalist id="workerNamesList"></datalist>
         </div>
         <div class="field">
           <label>તારીખ</label>
@@ -491,6 +491,7 @@
         </div>
       </div>
       <p class="hint" id="w_hint"></p>
+      <div id="w_machineRecent" style="margin:6px 0 0;"></div>
       <p class="hint">નોંધ: આ એન્ટ્રી ફક્ત પગાર ગણવા માટે છે — તેનાથી બીમના બાકી મીટર કે સ્ટોકમાં કોઈ ફેરફાર થશે નહીં. બીમમાંથી મીટર ઓછા કરવા માટે "આઉટ કાપડ એન્ટ્રી" પેજ વાપરો.</p>
       <button class="btn thread" onclick="submitWageEntry()">+ મીટર નોંધો</button>
     </div>
@@ -559,7 +560,7 @@
 
 <div id="printArea"></div>
 
-<footer>Loom Beam Manager · ડેટા Firebase cloud માં સેવ થાય છે — https://dharmessh1989-bit.github.io/loom-manager/ પરથી કોઈ પણ PC કે મોબાઇલ ખોલો, એક જ ડેટા દેખાશે</footer>
+<footer>Loom Beam Manager · ડેટા Firebase cloud માં સેવ થાય છે — https://dharmessh1989-bit.github.io/loom-manager/ પરથી કોઈ પણ PC કે મોબાઇલ ખોલો, એક જ ડેટા દેખાશે · <span style="opacity:.6;">Version: 2026-09-07-v1</span></footer>
 <div class="toast" id="toast"></div>
 
 <div class="modal-overlay" id="editModal" style="display:none;">
@@ -1769,14 +1770,61 @@ function onWageMachinePick(){
   const hint = document.getElementById('w_hint');
   const rateEl = document.getElementById('w_rate');
   if(!hint) return;
-  if(!m){ hint.textContent=''; if(rateEl) rateEl.value=''; return; }
+  if(!m){
+    hint.textContent='';
+    if(rateEl) rateEl.value='';
+    renderWageMachineRecent();
+    return;
+  }
   const active = activeBeamsForMachine(m);
   hint.textContent = active.length===0
     ? '⚠ આ મશીન પર કોઈ ચાલુ બીમ નથી.'
     : `ચાલુ ક્વોલિટી: ${esc(active[0].quality)||'—'} · બાકી મીટર: ${fmt(active[0].remainingMts)}`;
   if(rateEl) rateEl.value = rates[m] || '';
+  renderWageMachineRecent();
 }
 document.getElementById('w_machine').addEventListener('change', onWageMachinePick);
+
+// Quick reference box below the wage-entry form. If a karigar name is
+// already typed, shows THAT karigar's own last 3 પગાર entries on this
+// machine; otherwise shows the machine's last 3 entries overall (from
+// પગાર + આઉટ કાપડ combined) so it's still useful before a name is chosen.
+function renderWageMachineRecent(){
+  const recentBox = document.getElementById('w_machineRecent');
+  if(!recentBox) return;
+  const m = document.getElementById('w_machine').value;
+  const workerRaw = document.getElementById('w_worker').value.trim();
+  const worker = workerRaw.toLowerCase();
+  if(!m){ recentBox.innerHTML=''; return; }
+
+  let recent, title;
+  if(worker){
+    recent = wageEntries
+      .filter(o=>o.machine===m && (o.worker||'').trim().toLowerCase()===worker)
+      .map(o=>({date:o.date, worker:o.worker, mts:o.mts, src:'પગાર', id:o.id}))
+      .sort((a,b)=>b.id.localeCompare(a.id))
+      .slice(0,3);
+    title = `${esc(workerRaw)} — Machine ${esc(m)} ની છેલ્લી 3 એન્ટ્રી:`;
+  } else {
+    const wEntries = wageEntries.filter(o=>o.machine===m).map(o=>({id:o.id, date:o.date, worker:o.worker||'—', mts:o.mts, src:'પગાર'}));
+    const oEntries = outs.filter(o=>o.machine===m).map(o=>({id:o.id, date:o.date, worker:'—', mts:o.mts, src:'આઉટ'}));
+    recent = [...wEntries, ...oEntries].sort((a,b)=>b.id.localeCompare(a.id)).slice(0,3);
+    title = `Machine ${esc(m)} ની છેલ્લી 3 એન્ટ્રી:`;
+  }
+
+  if(recent.length===0){
+    recentBox.innerHTML = worker
+      ? `<p class="hint">${esc(workerRaw)} ની Machine ${esc(m)} પર હજુ કોઈ પગાર એન્ટ્રી નથી.</p>`
+      : '';
+  } else {
+    recentBox.innerHTML = `<p class="hint" style="margin-bottom:4px;">${title}</p>` +
+      `<div class="table-wrap"><table>
+        <tr><th>તારીખ</th><th>પ્રકાર</th><th>કારીગર</th><th class="num">મીટર</th></tr>
+        ${recent.map(o=>`<tr><td>${fmtDate(o.date)}</td><td class="muted">${o.src}</td><td>${esc(o.worker)}</td><td class="num">${fmt(o.mts)}</td></tr>`).join('')}
+      </table></div>`;
+  }
+}
+document.getElementById('w_worker').addEventListener('input', renderWageMachineRecent);
 
 async function onWageRateChange(){
   const m = document.getElementById('w_machine').value;
@@ -1793,6 +1841,18 @@ async function submitWageEntry(){
   const note = document.getElementById('w_note').value.trim();
   if(!machine){ toast('Machine No. પસંદ કરો'); return; }
   if(!mts || parseFloat(mts)<=0){ toast('માન્ય મીટર દાખલ કરો'); return; }
+  if(worker){
+    const dup = wageEntries.find(o =>
+      o.machine===machine &&
+      o.date===date &&
+      (o.worker||'').trim().toLowerCase()===worker.toLowerCase() &&
+      parseFloat(o.mts)===parseFloat(mts)
+    );
+    if(dup){
+      const msg = `⚠ આ જ એન્ટ્રી પહેલેથી નોંધાયેલ છે —\nકારીગર: ${worker} · Machine: ${machine} · તારીખ: ${fmtDate(date)} · મીટર: ${fmt(mts)}\n\nછતાં ફરી નોંધવું છે?`;
+      if(!confirm(msg)) return;
+    }
+  }
   const res = await addWageEntry({machine, mts, date, note, worker, rate});
   if(!res.ok){ toast(res.msg); return; }
   toast(`✅ ${fmt(mts)} મીટર નોંધાયા — Machine ${machine}${worker?' · '+worker:''}`);
@@ -1800,6 +1860,7 @@ async function submitWageEntry(){
   document.getElementById('w_note').value='';
   document.getElementById('w_date').value = todayStr();
   refreshAll();
+  onWageMachinePick();
   document.getElementById('w_mts').focus();
 }
 
@@ -2195,10 +2256,15 @@ function getFilteredHistoryRows(){
       }
     });
   }
-  return rows;
-}
 
-function renderHistory(){
+  // When looking at just one entry-type that carries a taka number
+  // (આઉટ કાપડ or ડિસ્પેચ), sort by that taka number (1, 2, 3...) instead of
+  // by date/creation-order — matches how a physical taka register is read.
+  if(type==='out' || type==='dispatch'){
+    rows.sort((a,b) => naturalCompare(a.obj.taka||'', b.obj.taka||''));
+  }
+  return rows;
+}function renderHistory(){
   const rows = getFilteredHistoryRows();
   const tbl = document.getElementById('historyTable');
   if(rows.length===0){ tbl.innerHTML = emptyRow(7,'કોઈ રેકોર્ડ મળ્યો નથી'); return; }
@@ -2222,8 +2288,8 @@ function renderHistory(){
         const beamNames = (o.beams||[]).map(x=>x.beamNo).join(', ')||'—';
         return `<tr>
           <td><span class="tag warn">આઉટ</span></td>
-          <td>${fmtDate(o.date)}</td><td><b>${esc(o.machine)}</b></td><td>${esc(beamNames)}</td>
-          <td class="muted">${o.taka?('તાકા: '+esc(o.taka)+' · '):''}${o.quality?('ક્વોલિટી: '+esc(o.quality)+' · '):''}${esc(o.note)||'—'}</td>
+          <td>${fmtDate(o.date)}</td><td><b>${esc(o.machine)}</b></td><td>${esc(o.taka)||'—'}</td>
+          <td class="muted">બીમ: ${esc(beamNames)}${o.quality?(' · ક્વોલિટી: '+esc(o.quality)):''}${o.note?(' · '+esc(o.note)):''}</td>
           <td class="num">${fmt(o.mts)}</td>
           <td class="row-actions">
             <button class="btn edit" onclick="editOut('${o.id}')">એડિટ</button>
@@ -2284,8 +2350,8 @@ function printHistory(){
     } else if(r.kind==='out'){
       const o = r.obj;
       const beamNames = (o.beams||[]).map(x=>x.beamNo).join(', ')||'—';
-      return `<tr><td>આઉટ</td><td>${fmtDate(o.date)}</td><td>${esc(o.machine)}</td><td>${esc(beamNames)}</td>
-        <td>${o.taka?('તાકા: '+esc(o.taka)+' · '):''}${o.quality?('ક્વોલિટી: '+esc(o.quality)+' · '):''}${esc(o.note)||'—'}</td>
+      return `<tr><td>આઉટ</td><td>${fmtDate(o.date)}</td><td>${esc(o.machine)}</td><td>${esc(o.taka)||'—'}</td>
+        <td>બીમ: ${esc(beamNames)}${o.quality?(' · ક્વોલિટી: '+esc(o.quality)):''}${o.note?(' · '+esc(o.note)):''}</td>
         <td class="num">${fmt(o.mts)}</td></tr>`;
     } else if(r.kind==='wage'){
       const o = r.obj;
@@ -2413,7 +2479,7 @@ attachEnterNav(
   submitOut
 );
 attachEnterNav(
-  ['w_machine','w_mts','w_rate','w_worker','w_date','w_note'],
+  ['w_machine','w_worker','w_mts','w_rate','w_date','w_note'],
   submitWageEntry
 );
 // (ડિસ્પેચ ફોર્મ માટે Enter handling d_taka/d_quality/d_mts પર અલગથી, ઉપર addTakaToPending() સાથે લાગેલું છે)
