@@ -226,6 +226,10 @@
         <button class="btn thread" onclick="importOldData()">ઇમ્પોર્ટ કરો</button>
       </div>
     </div>
+    <div style="display:flex; align-items:center; gap:10px; margin-bottom:10px; flex-wrap:wrap;">
+      <label style="font-weight:700; color:var(--indigo);">પગાર — કુલ મીટર: મહિનો પસંદ કરો:</label>
+      <input type="month" id="dash_stat_month" onchange="renderDashboard()" style="max-width:180px;">
+    </div>
     <div class="grid cols-4" id="statGrid" style="margin-bottom:18px;"></div>
 
     <div class="grid cols-2" style="gap:18px; margin-bottom:0;">
@@ -1608,6 +1612,14 @@ function renderMachineLookup(){
   const machineOuts = outs.filter(o=>o.machine===m);
   const totalOut = machineOuts.reduce((s,o)=>s+o.mts,0);
   html += `<p class="hint">આ મશીન પરથી અત્યાર સુધીમાં કુલ <b>${fmt(totalOut)}</b> મીટર કાપડ ઉતર્યું છે (${machineOuts.length} એન્ટ્રી).</p>`;
+  // Current month's per-date, per-karigar wage detail for this machine —
+  // answers "કયા મશીન પર કયો કારીગર કેટલું કામ કરે છે" right from the dashboard.
+  const curMonth = currentMonthVal();
+  const monthWageEntries = wageEntries.filter(w => (w.date||'').startsWith(curMonth));
+  const pivotBox = renderMachineKarigarBox(m, monthWageEntries);
+  if(pivotBox){
+    html += `<p class="hint" style="margin-top:10px;">આ મહિનાનો (${curMonth}) પગાર-હિસાબ — કારીગર પ્રમાણે:</p>` + pivotBox;
+  }
   box.innerHTML = html;
 }
 
@@ -1971,9 +1983,34 @@ function wageReportHTML(monthVal, machineFilter, opts){
 // For print/PDF only: one box per machine, listing which karigar worked how
 // many meters on which date for that machine — a physical-register-style
 // breakdown, separate from the totals-only tables shown above it.
+// Pivot-style box (like a hand-written register page): rows = dates,
+// columns = each karigar who worked on this machine that month, cells =
+// meters. Matches the physical register format used on the shop floor.
 function renderMachineKarigarBox(machine, monthEntries){
-  const mEntries = monthEntries.filter(o=>o.machine===machine).slice().sort((a,b)=>(a.date||'').localeCompare(b.date||''));
+  const mEntries = monthEntries.filter(o=>o.machine===machine);
   if(mEntries.length===0) return '';
+  const dates = Array.from(new Set(mEntries.map(o=>o.date))).sort();
+  const workers = Array.from(new Set(mEntries.map(o=>o.worker||'—'))).sort((a,b)=>a.localeCompare(b));
+
+  const grid = {}; // date -> worker -> total mts that day
+  mEntries.forEach(o=>{
+    const w = o.worker || '—';
+    if(!grid[o.date]) grid[o.date] = {};
+    grid[o.date][w] = (grid[o.date][w]||0) + o.mts;
+  });
+
+  const workerTotals = {};
+  workers.forEach(w=>{ workerTotals[w] = 0; });
+  const rows = dates.map(d=>{
+    const cells = workers.map(w=>{
+      const v = (grid[d] && grid[d][w]) || 0;
+      workerTotals[w] += v;
+      return `<td class="num">${v ? fmt(v) : '—'}</td>`;
+    }).join('');
+    return `<tr><td>${fmtDate(d)}</td>${cells}</tr>`;
+  }).join('');
+  const totalRow = `<tr style="font-weight:700;"><td>કુલ</td>${workers.map(w=>`<td class="num">${fmt(workerTotals[w])}</td>`).join('')}</tr>`;
+
   const totalMts = mEntries.reduce((s,o)=>s+o.mts,0);
   // Wage uses each entry's own snapshotted rate (falls back to the machine's
   // current rate only for older entries saved before rates were snapshotted).
@@ -1981,12 +2018,13 @@ function renderMachineKarigarBox(machine, monthEntries){
     const r = (o.rate!=null && o.rate!=='') ? o.rate : (rates[machine]||0);
     return s + o.mts*r;
   }, 0);
-  const rows = mEntries.map((o,i)=>`<tr><td>${i+1}</td><td>${fmtDate(o.date)}</td><td>${esc(o.worker)||'—'}</td><td class="num">${fmt(o.mts)}</td></tr>`).join('');
+
   return `<div class="table-wrap" style="margin-top:16px; border:1px solid #999; padding:8px;">
     <h3 style="margin:0 0 6px;">Machine ${esc(machine)}</h3>
     <table>
-      <tr><th>ક્રમ</th><th>તારીખ</th><th>કારીગર</th><th class="num">મીટર</th></tr>
+      <tr><th>તારીખ</th>${workers.map(w=>`<th>${esc(w)}</th>`).join('')}</tr>
       ${rows}
+      ${totalRow}
     </table>
     <p style="font-weight:700; margin-top:6px;">Machine ${esc(machine)} કુલ: ${fmt(totalMts)} મીટર &nbsp;·&nbsp; પગાર: ₹${fmt(totalWage)}</p>
   </div>`;
@@ -2170,13 +2208,17 @@ function renderDashboard(){
   const machinesCount = machineList().length;
   const activeBeams = beams.filter(b=>b.status==='active').length;
   const finishedBeams = beams.filter(b=>b.status==='finished').length;
-  const totalOutMts = outs.reduce((s,o)=>s+o.mts,0);
+
+  const monthEl = document.getElementById('dash_stat_month');
+  if(monthEl && !monthEl.value) monthEl.value = currentMonthVal();
+  const monthVal = monthEl ? monthEl.value : currentMonthVal();
+  const monthlyWageMts = wageEntries.filter(w => (w.date||'').startsWith(monthVal)).reduce((s,w)=>s+w.mts,0);
 
   document.getElementById('statGrid').innerHTML = `
     <div class="stat"><b>${machinesCount}</b><span>કુલ મશીન</span></div>
     <div class="stat"><b>${activeBeams}</b><span>ચાલુ બીમ</span></div>
     <div class="stat"><b>${finishedBeams}</b><span>પૂરા થયેલા બીમ</span></div>
-    <div class="stat"><b>${fmt(totalOutMts)}</b><span>કુલ આઉટ કાપડ (મીટર)</span></div>
+    <div class="stat"><b>${fmt(monthlyWageMts)}</b><span>પગાર — કુલ મીટર (${monthVal})</span></div>
   `;
 
   const low = beams.filter(b=>b.status==='active' && b.totalMts>0 && (b.remainingMts/b.totalMts)<0.15)
