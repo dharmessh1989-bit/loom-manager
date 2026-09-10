@@ -514,6 +514,22 @@
     </div>
 
     <div class="card">
+      <h2>કારીગરનું નામ સુધારો</h2>
+      <p class="hint" style="margin-top:-6px;">જો ટાઈપ કરવામાં ભૂલ (spelling/નાના-મોટા અક્ષર) ના લીધે એક જ કારીગરનું નામ અલગ-અલગ રીતે save થયું હોય, તો અહીં જૂનું નામ પસંદ કરી સાચું નામ લખો — બધી જૂની એન્ટ્રીઓમાં નામ આપોઆપ સુધરી જશે.</p>
+      <div class="form-grid">
+        <div class="field">
+          <label>જૂનું નામ (ભૂલવાળું)</label>
+          <input type="text" id="rk_old" list="workerNamesList" placeholder="જૂનું નામ પસંદ કરો">
+        </div>
+        <div class="field">
+          <label>સાચું નામ</label>
+          <input type="text" id="rk_new" placeholder="સાચું નામ લખો">
+        </div>
+      </div>
+      <button class="btn thread" onclick="renameKarigar()">✅ બધે અપડેટ કરો</button>
+    </div>
+
+    <div class="card">
       <h2>કારીગરની સંપૂર્ણ હિસ્ટ્રી</h2>
       <p class="hint" style="margin-top:-6px;">કારીગરનું નામ લખો — તેણે કયા મશીન પર કેટલું કામ કર્યું, કેટલા મીટર બનાવ્યા અને કુલ પગાર કેટલો થાય એ બધું અહીં દેખાશે.</p>
       <div class="form-grid">
@@ -1788,6 +1804,25 @@ function populateWorkerNamesList(){
   if(!dl) return;
   const names = Array.from(new Set(wageEntries.map(o=>o.worker).filter(Boolean))).sort((a,b)=>a.localeCompare(b));
   dl.innerHTML = names.map(n=>`<option value="${escAttr(n)}">`).join('');
+}
+
+// Bulk-corrects a karigar's name across all wage entries — for fixing typos/
+// spelling or casing differences that would otherwise split one person's
+// work into multiple separate "names" in reports and history.
+async function renameKarigar(){
+  const oldName = document.getElementById('rk_old').value.trim();
+  const newName = document.getElementById('rk_new').value.trim();
+  if(!oldName || !newName){ toast('બંને નામ લખો'); return; }
+  const oldKey = oldName.toLowerCase();
+  const matches = wageEntries.filter(o => (o.worker||'').trim().toLowerCase()===oldKey);
+  if(matches.length===0){ toast(`⚠ "${oldName}" નામની કોઈ એન્ટ્રી મળી નથી`); return; }
+  if(!confirm(`"${oldName}" ધરાવતી ${matches.length} એન્ટ્રીનું નામ બદલીને "${newName}" કરવું છે?`)) return;
+  matches.forEach(o=>{ o.worker = newName; });
+  await saveAll();
+  toast(`✅ ${matches.length} એન્ટ્રીમાં નામ સુધારાયું`);
+  document.getElementById('rk_old').value='';
+  document.getElementById('rk_new').value='';
+  refreshAll();
 }
 
 function onWageMachinePick(){
