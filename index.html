@@ -309,7 +309,7 @@
         </div>
         <div class="field">
           <label>ક્વોલિટી (Quality)</label>
-          <input type="text" id="f_quality" placeholder="દા.ત. Cotton Poplin">
+          <input type="text" id="f_quality" list="qualityOptions" placeholder="દા.ત. Cotton Poplin">
         </div>
         <div class="field">
           <label>PIC (પિક)</label>
@@ -1069,7 +1069,7 @@ function editBeam(id){
       <div class="field"><label>Machine No.</label><input id="em_machine" value="${escAttr(b.machine)}"></div>
       <div class="field"><label>Beam No.</label><input id="em_beamno" value="${escAttr(b.beamNo)}"></div>
       <div class="field"><label>તાર</label><input id="em_taar" value="${escAttr(b.taar)}"></div>
-      <div class="field"><label>ક્વોલિટી</label><input id="em_quality" value="${escAttr(b.quality)}"></div>
+      <div class="field"><label>ક્વોલિટી</label><input id="em_quality" list="qualityOptions" value="${escAttr(b.quality)}"></div>
       <div class="field"><label>PIC</label><input id="em_pic" value="${escAttr(b.pic)}"></div>
       <div class="field"><label>કુલ મીટર</label><input id="em_mts" type="number" step="0.01" value="${b.totalMts}"></div>
       <div class="field"><label>તારીખ</label><input id="em_date" type="date" value="${b.date}"></div>
@@ -1113,7 +1113,7 @@ function editOut(id){
     <div class="form-grid" style="grid-template-columns:1fr 1fr;">
       <div class="field"><label>આઉટ મીટર</label><input id="em_out_mts" type="number" step="0.01" value="${o.mts}"></div>
       <div class="field"><label>તાકા નંબર</label><input id="em_out_taka" value="${escAttr(o.taka)}"></div>
-      <div class="field"><label>ક્વોલિટી (સ્ટોક માટે)</label><input id="em_out_quality" value="${escAttr(o.quality)}"></div>
+      <div class="field"><label>ક્વોલિટી (સ્ટોક માટે)</label><input id="em_out_quality" list="qualityOptions" value="${escAttr(o.quality)}"></div>
       <div class="field"><label>તારીખ</label><input id="em_out_date" type="date" value="${o.date}"></div>
       <div class="field" style="grid-column:1/-1;"><label>નોંધ</label><input id="em_out_note" value="${escAttr(o.note)}"></div>
     </div>
@@ -1177,7 +1177,7 @@ function editDispatch(id){
   const body = `
     <div class="form-grid" style="grid-template-columns:1fr 1fr;">
       <div class="field"><label>Machine No.</label><input id="em_d_machine" value="${escAttr(dispatchMachine(d))}"></div>
-      <div class="field"><label>ક્વોલિટી</label><input id="em_d_quality" value="${escAttr(d.quality)}"></div>
+      <div class="field"><label>ક્વોલિટી</label><input id="em_d_quality" list="qualityOptions" value="${escAttr(d.quality)}"></div>
       <div class="field"><label>તાકા નંબર</label><input id="em_d_taka" value="${escAttr(d.taka)}"></div>
       <div class="field"><label>મોકલેલા મીટર</label><input id="em_d_mts" type="number" step="0.01" value="${d.mts}"></div>
       <div class="field"><label>તારીખ</label><input id="em_d_date" type="date" value="${d.date}"></div>
