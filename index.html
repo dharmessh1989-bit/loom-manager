@@ -1849,6 +1849,17 @@ document.getElementById('w_machine').addEventListener('change', onWageMachinePic
 // already typed, shows THAT karigar's own last 3 પગાર entries on this
 // machine; otherwise shows the machine's last 3 entries overall (from
 // પગાર + આઉટ કાપડ combined) so it's still useful before a name is chosen.
+// Figures out today's running 15-day wage period: 1-15, or 16-to-end-of-month.
+// Rolling last-15-days window ending today — NOT the calendar 1-15/16-end
+// wage-period split, just "today and the 14 days before it", always.
+function last15DaysRange(){
+  const end = new Date();
+  const start = new Date();
+  start.setDate(end.getDate() - 14);
+  const toISO = (d) => d.toISOString().slice(0,10);
+  return {startDate: toISO(start), endDate: toISO(end)};
+}
+
 function renderWageMachineRecent(){
   const recentBox = document.getElementById('w_machineRecent');
   if(!recentBox) return;
@@ -1857,14 +1868,21 @@ function renderWageMachineRecent(){
   const worker = workerRaw.toLowerCase();
   if(!m){ recentBox.innerHTML=''; return; }
 
-  let recent, title;
+  let recent, title, totalLine = '';
   if(worker){
+    const range = last15DaysRange();
     recent = wageEntries
-      .filter(o=>o.machine===m && (o.worker||'').trim().toLowerCase()===worker)
+      .filter(o => o.machine===m
+        && (o.worker||'').trim().toLowerCase()===worker
+        && (o.date||'') >= range.startDate
+        && (o.date||'') <= range.endDate)
       .map(o=>({date:o.date, worker:o.worker, mts:o.mts, src:'પગાર', id:o.id}))
-      .sort((a,b)=>b.id.localeCompare(a.id))
-      .slice(0,3);
-    title = `${esc(workerRaw)} — Machine ${esc(m)} ની છેલ્લી 3 એન્ટ્રી:`;
+      .sort((a,b)=>a.date.localeCompare(b.date));
+    title = `${esc(workerRaw)} — Machine ${esc(m)} ના છેલ્લા 15 દિવસ (${fmtDate(range.startDate)} થી ${fmtDate(range.endDate)}) ની એન્ટ્રી:`;
+    if(recent.length){
+      const totalMts = recent.reduce((s,o)=>s+o.mts,0);
+      totalLine = `<p class="hint" style="margin-top:4px; font-weight:600;">છેલ્લા 15 દિવસનું કુલ: ${fmt(totalMts)} મીટર</p>`;
+    }
   } else {
     const wEntries = wageEntries.filter(o=>o.machine===m).map(o=>({id:o.id, date:o.date, worker:o.worker||'—', mts:o.mts, src:'પગાર'}));
     const oEntries = outs.filter(o=>o.machine===m).map(o=>({id:o.id, date:o.date, worker:'—', mts:o.mts, src:'આઉટ'}));
@@ -1874,14 +1892,14 @@ function renderWageMachineRecent(){
 
   if(recent.length===0){
     recentBox.innerHTML = worker
-      ? `<p class="hint">${esc(workerRaw)} ની Machine ${esc(m)} પર હજુ કોઈ પગાર એન્ટ્રી નથી.</p>`
+      ? `<p class="hint">${esc(workerRaw)} ની Machine ${esc(m)} પર છેલ્લા 15 દિવસમાં હજુ કોઈ પગાર એન્ટ્રી નથી.</p>`
       : '';
   } else {
     recentBox.innerHTML = `<p class="hint" style="margin-bottom:4px;">${title}</p>` +
       `<div class="table-wrap"><table>
         <tr><th>તારીખ</th><th>પ્રકાર</th><th>કારીગર</th><th class="num">મીટર</th></tr>
         ${recent.map(o=>`<tr><td>${fmtDate(o.date)}</td><td class="muted">${o.src}</td><td>${esc(o.worker)}</td><td class="num">${fmt(o.mts)}</td></tr>`).join('')}
-      </table></div>`;
+      </table></div>` + totalLine;
   }
 }
 document.getElementById('w_worker').addEventListener('input', renderWageMachineRecent);
@@ -2550,6 +2568,7 @@ function refreshAll(){
   populateWorkerNamesList();
   renderWageReport();
   renderWageRecent();
+  renderWageMachineRecent();
   renderKarigarHistory();
   renderRecentDispatch();
   renderPendingDispatch();
